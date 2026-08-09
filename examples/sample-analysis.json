@@ -1,0 +1,83 @@
+{
+  "query": "租房墙面反复发霉",
+  "posts": [
+    {
+      "note_id": "demo-mold-001",
+      "is_question": true,
+      "question": "如何处理一楼衣柜后反复出现的墙面霉菌并减少复发？",
+      "confidence": 0.98,
+      "comments": [
+        {
+          "comment_id": "c1",
+          "category": "firsthand_experience",
+          "claim": "在确认外墙渗水的个案中，先补漏再除霉后两年未复发。",
+          "confidence": 0.86
+        },
+        {
+          "comment_id": "c2",
+          "category": "direct_answer",
+          "claim": "建议使用酒精，但缺少面积、浓度、安全条件和结果。",
+          "confidence": 0.35
+        },
+        {
+          "comment_id": "c3",
+          "category": "risk_warning",
+          "claim": "提醒大面积使用酒精的风险，并强调先处理潮湿根因。",
+          "confidence": 0.8
+        },
+        {
+          "comment_id": "c4",
+          "category": "counterexample",
+          "claim": "只做表面除霉的个案一周后复发。",
+          "confidence": 0.78
+        },
+        {
+          "comment_id": "c5",
+          "category": "off_topic",
+          "claim": "没有提供答案或经验。",
+          "confidence": 0.99
+        }
+      ],
+      "solution": {
+        "summary": "先做好防护并排查持续潮湿或渗水原因，处理根因后再除霉和观察复发。",
+        "steps": [
+          {
+            "text": "处理前通风并做好个人防护，不把大面积喷酒精作为默认方案。",
+            "evidence_comment_ids": ["c3"]
+          },
+          {
+            "text": "检查墙体潮湿、外墙渗水等根因；确认问题后联系有责任的一方处理。",
+            "evidence_comment_ids": ["c1", "c3"]
+          },
+          {
+            "text": "根因处理后再除霉，并持续观察是否复发。",
+            "evidence_comment_ids": ["c1", "c4"]
+          }
+        ],
+        "constraints": [
+          "外墙渗水只是评论个案，不能直接认定为当前房屋原因。",
+          "具体产品、浓度和操作方法需要结合产品说明及权威安全指引。"
+        ],
+        "conflicts": [
+          {
+            "topic": "是否直接使用酒精",
+            "positions": [
+              {
+                "claim": "可以直接喷酒精。",
+                "evidence_comment_ids": ["c2"]
+              },
+              {
+                "claim": "大面积使用存在风险，且无法替代根因处理。",
+                "evidence_comment_ids": ["c3"]
+              }
+            ]
+          }
+        ],
+        "unknowns": [
+          "霉斑面积、墙体含水情况和实际渗水点未提供。",
+          "评论中的安全主张仍需权威来源复核。"
+        ]
+      }
+    }
+  ]
+}

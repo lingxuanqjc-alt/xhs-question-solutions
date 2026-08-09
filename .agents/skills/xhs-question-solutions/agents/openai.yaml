@@ -1,0 +1,4 @@
+interface:
+  display_name: "小红书问题帖解答"
+  short_description: "筛选小红书问题帖，提炼评论证据、亲历经验与可执行解决方案"
+  default_prompt: "Use $xhs-question-solutions to find question posts and turn comment evidence into actionable solutions."

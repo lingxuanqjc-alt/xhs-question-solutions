@@ -1,0 +1,38 @@
+{
+  "notes": [
+    {
+      "id": "demo-mold-001",
+      "url": "https://example.invalid/xhs/demo-mold-001",
+      "title": "租房墙面反复发霉怎么办？",
+      "desc": "南方一楼，衣柜后面反复发霉，想听听真正处理过的人怎么解决。",
+      "author": {"nickname": "示例发帖者"},
+      "comments": [
+        {
+          "id": "c1",
+          "content": "我家情况类似，先查出外墙渗水，物业补漏后再除霉，两年没复发。",
+          "likes": 18
+        },
+        {
+          "id": "c2",
+          "content": "喷点酒精就行。",
+          "likes": 3
+        },
+        {
+          "id": "c3",
+          "content": "大面积用酒精有火灾和吸入风险，先通风戴防护；根因不处理还会复发。",
+          "likes": 12
+        },
+        {
+          "id": "c4",
+          "content": "我只用了除霉剂，一周后又长了。",
+          "likes": 6
+        },
+        {
+          "id": "c5",
+          "content": "蹲答案。",
+          "likes": 1
+        }
+      ]
+    }
+  ]
+}

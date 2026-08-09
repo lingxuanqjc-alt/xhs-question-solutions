@@ -1,0 +1,27 @@
+# Authentication and local configuration
+.env
+.env.*
+!.env.example
+cookies.json
+**/cookies.json
+*.pem
+*.key
+
+# Private or generated data
+/data/
+/output/
+/outputs/
+/build/
+/demo/output/
+*.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
