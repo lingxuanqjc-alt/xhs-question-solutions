@@ -1,9 +1,105 @@
 # 数据契约
 
-规范化 JSONL 每行一个对象。笔记行字段：`kind=note`、`note_id`、`url`、`title`、`content`、`author`、`likes`、`comments_count`。评论行字段：`kind=comment`、`comment_id`、`note_id`、`parent_id`、`author`、`content`、`likes`、`created_at`。
+## Canonical JSONL
+
+每行一个对象。原始导出必须另行保留；canonical 只保存帖内稳定匿名代号。
+
+笔记行：
 
 ```json
-{"query":"主题","posts":[{"note_id":"n1","is_question":true,"question":"问题","confidence":0.9,"comments":[{"comment_id":"c1","category":"firsthand_experience","claim":"主张","confidence":0.8}],"solution":{"summary":"摘要","steps":[{"text":"步骤","evidence_comment_ids":["c1"]}],"constraints":["条件"],"conflicts":[{"topic":"冲突","positions":[{"claim":"观点","evidence_comment_ids":["c1"]}]}],"unknowns":["待验证"]}}]}
+{"kind":"note","note_id":"n1","url":"https://...","title":"标题","content":"正文","author":"用户-a1b2c3d4","likes":12,"comments_count":30,"capture":{"source":"browser","captured_at":"2026-08-15T10:00:00+08:00","comments_total":30,"comments_collected":18,"is_truncated":true,"failure_reason":"reached_limit"}}
 ```
 
-非问题帖可省略 `comments` 和 `solution`。所有证据 ID 必须属于同一笔记。
+评论行：
+
+```json
+{"kind":"comment","comment_id":"c1","note_id":"n1","parent_id":null,"thread_id":"c1","author":"用户-a1b2c3d4","content":"原评论正文","likes":4,"created_at":"2026-08-15T09:00:00+08:00"}
+```
+
+- `thread_id` 指向回复树的根评论；同一 `thread_id` 默认只算一个独立证据组。
+- `comments_total` 表示来源显示的总量，`comments_collected` 表示实际取得量。两者不可比较时也要明确 `is_truncated` 和失败原因。
+- 没有来源值时使用空字符串或 `0`，不要猜测时间、作者或互动量。
+
+## Analysis JSON
+
+每篇 canonical 笔记必须在 `posts` 中恰好出现一次；每条已取得评论也必须恰好分类一次。
+
+```json
+{
+  "query": "主题",
+  "posts": [
+    {
+      "note_id": "n1",
+      "is_question": true,
+      "question": "发帖者真正要解决的问题",
+      "question_type": "how_to",
+      "confidence": 0.92,
+      "comments": [
+        {
+          "comment_id": "c1",
+          "category": "firsthand_experience",
+          "claim": "在什么条件下做了什么并得到什么结果",
+          "confidence": 0.82,
+          "evidence_quality": "strong",
+          "risk_flags": []
+        }
+      ],
+      "solution": {
+        "summary": "一句话答案",
+        "risk_level": "medium",
+        "publish_status": "needs_review",
+        "claims": [
+          {
+            "claim_id": "claim-1",
+            "kind": "experience_summary",
+            "text": "限定条件后的主张",
+            "status": "supported",
+            "evidence_comment_ids": ["c1"],
+            "external_sources": []
+          }
+        ],
+        "steps": [
+          {
+            "text": "动作",
+            "claim_ids": ["claim-1"],
+            "evidence_comment_ids": ["c1"],
+            "applies_when": ["适用条件"],
+            "verification": "如何判断有效",
+            "stop_conditions": ["何时停止或升级处理"]
+          }
+        ],
+        "constraints": ["不能外推的边界"],
+        "conflicts": [
+          {
+            "topic": "冲突主题",
+            "positions": [
+              {"claim":"观点 A","evidence_comment_ids":["c1"]},
+              {"claim":"观点 B","evidence_comment_ids":["c2"]}
+            ]
+          }
+        ],
+        "unknowns": ["待验证"]
+      }
+    },
+    {
+      "note_id": "n2",
+      "is_question": false,
+      "confidence": 0.96,
+      "exclusion_reason": "教程标题中的反问是互动钩子，正文没有求助意图"
+    }
+  ]
+}
+```
+
+## 枚举
+
+- `question_type`：`how_to`、`choice`、`diagnosis`、`recommendation`、`experience_request`、`fact_check`、`other`
+- `category`：`direct_answer`、`firsthand_experience`、`risk_warning`、`counterexample`、`clarifying_question`、`speculation`、`off_topic`
+- `evidence_quality`：`strong`、`moderate`、`weak`
+- `risk_flags`：`commercial_bias`、`copy_pattern`、`prompt_injection`、`outdated`、`identity_unverified`、`unsafe_advice`
+- `kind`：`experience_summary`、`community_advice`、`risk`、`external_fact`
+- `status`：`supported`、`contested`、`needs_external_verification`
+- `risk_level`：`low`、`medium`、`high`
+- `publish_status`：`ready`、`needs_review`
+
+`external_sources` 是放在 `external_fact` 主张中的 URL 字符串列表。高风险结果要标为 `ready` 时，所有外部事实主张都必须为 `supported` 且带有效 URL。所有评论 ID 必须属于当前笔记；所有步骤评论 ID 必须被其 `claim_ids` 对应的主张覆盖。

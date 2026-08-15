@@ -5,57 +5,149 @@
       "note_id": "demo-mold-001",
       "is_question": true,
       "question": "如何处理一楼衣柜后反复出现的墙面霉菌并减少复发？",
+      "question_type": "how_to",
       "confidence": 0.98,
       "comments": [
         {
           "comment_id": "c1",
           "category": "firsthand_experience",
-          "claim": "在确认外墙渗水的个案中，先补漏再除霉后两年未复发。",
-          "confidence": 0.86
+          "claim": "在确认外墙渗水的相似个案中，先补漏再除霉后两年未复发。",
+          "confidence": 0.86,
+          "evidence_quality": "strong",
+          "risk_flags": []
         },
         {
           "comment_id": "c2",
           "category": "direct_answer",
-          "claim": "建议使用酒精，但缺少面积、浓度、安全条件和结果。",
-          "confidence": 0.35
+          "claim": "建议直接喷酒精，但没有面积、浓度、安全条件或结果。",
+          "confidence": 0.35,
+          "evidence_quality": "weak",
+          "risk_flags": ["unsafe_advice"]
         },
         {
           "comment_id": "c3",
           "category": "risk_warning",
           "claim": "提醒大面积使用酒精的风险，并强调先处理潮湿根因。",
-          "confidence": 0.8
+          "confidence": 0.8,
+          "evidence_quality": "moderate",
+          "risk_flags": ["identity_unverified"]
+        },
+        {
+          "comment_id": "c3r1",
+          "category": "speculation",
+          "claim": "只转述看过相同说法，明确没有亲自验证。",
+          "confidence": 0.95,
+          "evidence_quality": "weak",
+          "risk_flags": ["identity_unverified"]
         },
         {
           "comment_id": "c4",
           "category": "counterexample",
           "claim": "只做表面除霉的个案一周后复发。",
-          "confidence": 0.78
+          "confidence": 0.78,
+          "evidence_quality": "moderate",
+          "risk_flags": []
         },
         {
           "comment_id": "c5",
           "category": "off_topic",
-          "claim": "没有提供答案或经验。",
-          "confidence": 0.99
+          "claim": "仅等待答案，没有提供方法或经验。",
+          "confidence": 0.99,
+          "evidence_quality": "weak",
+          "risk_flags": []
+        },
+        {
+          "comment_id": "c6",
+          "category": "speculation",
+          "claim": "声称开窗三天可对所有房屋根治，但没有来源或亲历。",
+          "confidence": 0.97,
+          "evidence_quality": "weak",
+          "risk_flags": ["identity_unverified"]
+        },
+        {
+          "comment_id": "c7",
+          "category": "clarifying_question",
+          "claim": "追问霉斑面积和墙体潮湿情况。",
+          "confidence": 0.99,
+          "evidence_quality": "weak",
+          "risk_flags": []
+        },
+        {
+          "comment_id": "c8",
+          "category": "off_topic",
+          "claim": "用保证效果的话术引导购买，并夹带要求 Agent 忽略规则的文本。",
+          "confidence": 0.99,
+          "evidence_quality": "weak",
+          "risk_flags": ["commercial_bias", "prompt_injection"]
         }
       ],
       "solution": {
         "summary": "先做好防护并排查持续潮湿或渗水原因，处理根因后再除霉和观察复发。",
+        "risk_level": "high",
+        "publish_status": "needs_review",
+        "claims": [
+          {
+            "claim_id": "claim-1",
+            "kind": "experience_summary",
+            "text": "一个相似个案在确认外墙渗水后先补漏再除霉，两年未复发。",
+            "status": "supported",
+            "evidence_comment_ids": ["c1"],
+            "external_sources": []
+          },
+          {
+            "claim_id": "claim-2",
+            "kind": "community_advice",
+            "text": "是否应直接使用酒精存在冲突，当前样本不足以推荐。",
+            "status": "contested",
+            "evidence_comment_ids": ["c2", "c3"],
+            "external_sources": []
+          },
+          {
+            "claim_id": "claim-3",
+            "kind": "risk",
+            "text": "只做表面除霉可能复发；一个评论个案在一周后复发。",
+            "status": "supported",
+            "evidence_comment_ids": ["c4"],
+            "external_sources": []
+          },
+          {
+            "claim_id": "claim-4",
+            "kind": "external_fact",
+            "text": "大面积使用酒精可能涉及火灾和吸入风险。",
+            "status": "needs_external_verification",
+            "evidence_comment_ids": ["c3"],
+            "external_sources": []
+          }
+        ],
         "steps": [
           {
-            "text": "处理前通风并做好个人防护，不把大面积喷酒精作为默认方案。",
-            "evidence_comment_ids": ["c3"]
+            "text": "处理前先通风并核对产品安全说明，不把大面积喷酒精作为默认方案。",
+            "claim_ids": ["claim-2", "claim-4"],
+            "evidence_comment_ids": ["c2", "c3"],
+            "applies_when": ["计划使用酒精或其他挥发性产品", "现场能够安全通风"],
+            "verification": "已确认产品适用表面、通风要求和火源隔离条件。",
+            "stop_conditions": ["存在火源、通风不足或敏感人群", "产品说明与现场条件不匹配"]
           },
           {
-            "text": "检查墙体潮湿、外墙渗水等根因；确认问题后联系有责任的一方处理。",
-            "evidence_comment_ids": ["c1", "c3"]
+            "text": "检查墙体潮湿、外墙渗水等持续水分来源；确认原因后联系责任方处理。",
+            "claim_ids": ["claim-1", "claim-3"],
+            "evidence_comment_ids": ["c1", "c4"],
+            "applies_when": ["霉斑反复出现或墙面持续潮湿"],
+            "verification": "找到可观察的潮湿来源，或由物业、房东、专业人员完成检查。",
+            "stop_conditions": ["原因无法安全确认", "涉及结构、外墙或管线问题"]
           },
           {
-            "text": "根因处理后再除霉，并持续观察是否复发。",
-            "evidence_comment_ids": ["c1", "c4"]
+            "text": "根因处理后再除霉，记录位置和日期并观察是否复发。",
+            "claim_ids": ["claim-1", "claim-3"],
+            "evidence_comment_ids": ["c1", "c4"],
+            "applies_when": ["持续水分来源已经处理或排除"],
+            "verification": "处理区域在观察期内保持干燥且没有新增霉斑。",
+            "stop_conditions": ["一周内快速复发", "霉斑扩大或出现明显健康不适"]
           }
         ],
         "constraints": [
           "外墙渗水只是评论个案，不能直接认定为当前房屋原因。",
+          "取得 9/12 条评论且样本被截断，不能代表完整评论区。",
           "具体产品、浓度和操作方法需要结合产品说明及权威安全指引。"
         ],
         "conflicts": [
@@ -74,10 +166,17 @@
           }
         ],
         "unknowns": [
-          "霉斑面积、墙体含水情况和实际渗水点未提供。",
-          "评论中的安全主张仍需权威来源复核。"
+          "霉斑面积、墙体含水情况和实际水分来源未提供。",
+          "评论中的化学品安全主张尚未由权威来源复核。",
+          "截断的 3 条评论是否包含新的反例或条件未知。"
         ]
       }
+    },
+    {
+      "note_id": "demo-tutorial-002",
+      "is_question": false,
+      "confidence": 0.97,
+      "exclusion_reason": "标题中的反问是互动钩子，正文在提供教程而不是寻求答案。"
     }
   ]
 }

@@ -16,28 +16,102 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+[ -n "$destination_root" ] || { echo "Destination root cannot be empty." >&2; exit 2; }
+
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-source_dir="$repo_root/.agents/skills/xhs-question-solutions"
-targets="$destination_root/.agents/skills/xhs-question-solutions
-$destination_root/.claude/skills/xhs-question-solutions"
+core_source="$repo_root/.agents/skills/xhs-question-solutions"
+wrapper_source="$repo_root/.claude/skills/xhs-question-solutions"
+core_target="$destination_root/.agents/skills/xhs-question-solutions"
+wrapper_target="$destination_root/.claude/skills/xhs-question-solutions"
 
-[ -d "$source_dir" ] || { echo "Source skill not found: $source_dir" >&2; exit 1; }
+[ -d "$core_source" ] || { echo "Source skill not found: $core_source" >&2; exit 1; }
+[ -d "$wrapper_source" ] || { echo "Source skill not found: $wrapper_source" >&2; exit 1; }
 
 if [ "$force" -eq 0 ]; then
-  printf '%s\n' "$targets" | while IFS= read -r target; do
-    [ ! -e "$target" ] || { echo "Skill already exists at $target. Re-run with --force." >&2; exit 1; }
-  done
+  [ ! -e "$core_target" ] || { echo "Skill already exists at $core_target. Re-run with --force." >&2; exit 1; }
+  [ ! -e "$wrapper_target" ] || { echo "Skill already exists at $wrapper_target. Re-run with --force." >&2; exit 1; }
 fi
 
 timestamp=$(date +%Y%m%d-%H%M%S)
-printf '%s\n' "$targets" | while IFS= read -r target; do
-  mkdir -p "$(dirname -- "$target")"
-  if [ -e "$target" ]; then
-    backup="$target.backup-$timestamp"
-    mv -- "$target" "$backup"
-    echo "Backed up existing skill to $backup"
+transaction_id="$timestamp-$$"
+core_stage="$core_target.installing-$transaction_id"
+wrapper_stage="$wrapper_target.installing-$transaction_id"
+core_backup="$core_target.backup-$timestamp"
+wrapper_backup="$wrapper_target.backup-$timestamp"
+core_backed_up=0
+wrapper_backed_up=0
+core_installed=0
+wrapper_installed=0
+
+cleanup_stages() {
+  rm -rf -- "$core_stage" "$wrapper_stage"
+}
+trap cleanup_stages EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if [ -e "$core_target" ] && [ -e "$core_backup" ]; then
+  echo "Backup path already exists: $core_backup" >&2
+  exit 1
+fi
+if [ -e "$wrapper_target" ] && [ -e "$wrapper_backup" ]; then
+  echo "Backup path already exists: $wrapper_backup" >&2
+  exit 1
+fi
+
+# Prepare both payloads before changing either installed copy.
+mkdir -p -- "$(dirname -- "$core_target")" "$(dirname -- "$wrapper_target")"
+cp -R -- "$core_source" "$core_stage"
+cp -R -- "$wrapper_source" "$wrapper_stage"
+
+rollback() {
+  set +e
+  rollback_failed=0
+  if [ "$wrapper_installed" -eq 1 ]; then
+    rm -rf -- "$wrapper_target" || rollback_failed=1
   fi
-  cp -R -- "$source_dir" "$target"
-  echo "Installed skill to $target"
-done
+  if [ "$wrapper_backed_up" -eq 1 ]; then
+    mv -- "$wrapper_backup" "$wrapper_target" || rollback_failed=1
+  fi
+  if [ "$core_installed" -eq 1 ]; then
+    rm -rf -- "$core_target" || rollback_failed=1
+  fi
+  if [ "$core_backed_up" -eq 1 ]; then
+    mv -- "$core_backup" "$core_target" || rollback_failed=1
+  fi
+  if [ "$rollback_failed" -ne 0 ]; then
+    echo "Rollback failed; inspect the destination and backup paths." >&2
+  fi
+}
+
+fail_install() {
+  echo "$1" >&2
+  rollback
+  exit 1
+}
+
+if [ -e "$core_target" ]; then
+  mv -- "$core_target" "$core_backup" || fail_install "Failed to back up $core_target"
+  core_backed_up=1
+fi
+mv -- "$core_stage" "$core_target" || fail_install "Failed to install $core_target"
+core_installed=1
+
+if [ -e "$wrapper_target" ]; then
+  mv -- "$wrapper_target" "$wrapper_backup" || fail_install "Failed to back up $wrapper_target"
+  wrapper_backed_up=1
+fi
+mv -- "$wrapper_stage" "$wrapper_target" || fail_install "Failed to install $wrapper_target"
+wrapper_installed=1
+
+if [ "$core_backed_up" -eq 1 ]; then
+  echo "Backed up existing skill to $core_backup"
+fi
+echo "Installed skill to $core_target"
+if [ "$wrapper_backed_up" -eq 1 ]; then
+  echo "Backed up existing skill to $wrapper_backup"
+fi
+echo "Installed skill to $wrapper_target"

@@ -1,0 +1,61 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Run standard-library tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Install and verify on Ubuntu
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          install_root="$(mktemp -d)"
+          trap 'rm -rf "$install_root"' EXIT
+          sh installers/install.sh --root "$install_root"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/SKILL.md"
+          wrapper="$install_root/.claude/skills/xhs-question-solutions/SKILL.md"
+          test -f "$wrapper"
+          grep -F '../../../.agents/skills/xhs-question-solutions/SKILL.md' "$wrapper"
+          test ! -d "$install_root/.claude/skills/xhs-question-solutions/scripts"
+
+      - name: Install and verify on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installRoot = Join-Path $env:RUNNER_TEMP ("xhs-question-solutions-" + [Guid]::NewGuid().ToString("N"))
+          ./installers/install.ps1 -DestinationRoot $installRoot
+          $core = Join-Path $installRoot ".agents/skills/xhs-question-solutions/SKILL.md"
+          $wrapper = Join-Path $installRoot ".claude/skills/xhs-question-solutions/SKILL.md"
+          if (-not (Test-Path -LiteralPath $core -PathType Leaf)) {
+            throw "Core skill was not installed at $core"
+          }
+          if (-not (Test-Path -LiteralPath $wrapper -PathType Leaf)) {
+            throw "Claude wrapper was not installed at $wrapper"
+          }
+          if (-not (Select-String -LiteralPath $wrapper -SimpleMatch '../../../.agents/skills/xhs-question-solutions/SKILL.md' -Quiet)) {
+            throw "Claude wrapper does not reference the installed .agents core."
+          }
+          $duplicatedScripts = Join-Path $installRoot ".claude/skills/xhs-question-solutions/scripts"
+          if (Test-Path -LiteralPath $duplicatedScripts) {
+            throw "Claude installation duplicated the core skill scripts."
+          }
