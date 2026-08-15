@@ -8,4 +8,6 @@ The MIT license in [LICENSE](LICENSE) applies to this project's own code. Option
 - React and React DOM are distributed under the MIT License.
 - Chromium, Microsoft Edge and Google Chrome are not bundled or downloaded by this project. A locally installed browser remains subject to its vendor's license and policies.
 
+External voiceover WAV files are supplied by the user and are not included in this repository or its release assets. The importer records the user's declared origin and rights basis, but does not inspect license terms or grant redistribution rights. Users remain responsible for voice, recording, music, service-term, privacy and platform permissions that apply to their audio. For synthetic speech, confirming service terms is a user attestation, not a legal or license verification performed by this project.
+
 This file is informational and does not replace the complete license text shipped by each dependency.

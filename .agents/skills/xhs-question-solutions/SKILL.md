@@ -1,6 +1,6 @@
 ---
 name: xhs-question-solutions
-description: 筛选小红书候选笔记中的真实问题帖，完整分类评论区的直接答案、亲历经验、风险、反例、猜测和操纵信号，并生成带数据覆盖、主张账本及原评论证据的可执行方案。用于搜索或分析小红书问题帖、整理评论经验、比较冲突答案、审查评论可信度，或把小红书 JSON/JSONL 转成报告、HTML/PNG 图文卡片和短视频脚本时。
+description: 筛选小红书候选笔记中的真实问题帖，完整分类评论区的直接答案、亲历经验、风险、反例、猜测和操纵信号，并生成带数据覆盖、主张账本及原评论证据的可执行方案。用于搜索或分析小红书问题帖、整理评论经验、比较冲突答案、审查评论可信度，或把小红书 JSON/JSONL 转成报告、HTML/PNG 图文卡片、静音视频及用户确认的外部 WAV 配音项目时。
 ---
 
 # 小红书问题帖解答
@@ -54,7 +54,7 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
    ```
 
    HTML 无额外依赖。`--png` 仅在已检测到 Node.js、Playwright 与 Chromium/Edge/Chrome 时启用；不要自动安装。PNG 同时包含主卡和分页证据附录。可选风格：`morandi`、`academic`、`dark`、`mint`、`sunset`、`bw`。
-9. 需要视频项目或 MP4 时，先在 Skill 根目录安装锁定依赖，再生成确定性的 `xhs-video/v1`：
+9. 需要视频项目或 MP4 时，先在 Skill 根目录安装锁定依赖，再生成确定性的静音 `xhs-video/v1`：
 
    ```text
    npm ci --ignore-scripts --no-audit --no-fund
@@ -63,7 +63,17 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
    npm run video:studio -- --props <output-dir>/<note-id>.props.json
    ```
 
-   不带 `--mp4` 时只生成视频 IR、Markdown 分镜和 `.props.json`。MP4 固定为 1080×1920、30 fps、60–90 秒、H.264 且无音轨。浏览器只使用 `--browser`、`REMOTION_BROWSER_EXECUTABLE`、`PLAYWRIGHT_CHROMIUM_EXECUTABLE` 或系统已知位置的 Chromium/Edge/Chrome；不自动下载。Studio 载入生成的 props，只启动本地预览服务，不代表已导出或发布。
+   不带 `--mp4` 时只生成视频 IR、Markdown 分镜和 `.props.json`。v1 MP4 固定为 1080×1920、30 fps、60–90 秒、H.264 且无音轨。浏览器只使用 `--browser`、`REMOTION_BROWSER_EXECUTABLE`、`PLAYWRIGHT_CHROMIUM_EXECUTABLE` 或系统已知位置的 Chromium/Edge/Chrome；不自动下载。Studio 载入生成的 props，只启动本地预览服务，不代表已导出或发布。
+10. 用户已为每个场景提供并听审外部 WAV 时，可从 v1 初始化清单并构建有声 `xhs-video/v2`：
+
+   ```text
+   python scripts/import_voiceover.py init <v1-video-projects.json> <voiceover-manifest.json>
+   python scripts/import_voiceover.py build <v1-video-projects.json> <voiceover-manifest.json> <v2-output-dir> --confirm-audio-reviewed --confirm-audio-rights
+   python scripts/render_video.py --project-dir <v2-output-dir> --mp4 --browser <chrome-or-edge-path>
+   ```
+
+   `init` 后由用户填写每个视频的 `origin`、`rights_basis`、每场 WAV 相对路径及逐条字幕的采样点。只接受 RIFF PCM s16le、48 kHz、单声道、16-bit WAV；工具不生成 TTS、不读取 API Key，也不替用户判断版权或可听性。两个确认参数分别表示用户已经逐段听审、已经确认所声明的使用权，不能由 Agent 自动补上。`synthetic_ai` 旁白会在首帧和披露场景显示“旁白由AI合成”。`--project-dir` 重新校验已构建项目并事务式渲染整个批次；v2 成片必须经探测确认为 H.264 + AAC 48 kHz 单声道。具体命令、声明枚举和失败语义见 [references/output-formats.md](references/output-formats.md) 与 [references/data-contract.md](references/data-contract.md)。
+11. 发布前按目标入口运行平台 profile 检查。`pass` 才表示自动门禁通过；`needs_review` 默认退出码 3，必须完成人工项；`blocked` 退出码 1。`--allow-needs-review` 只用于收集报告，不能把待复核状态改写成可发布。
 
 ## 质量门槛
 
@@ -86,7 +96,7 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
 - 外部事实无法复核：放入待验证，不用于把高风险内容标为可发布。
 - 脚本不可运行：说明“未运行确定性校验”，不把结果称为已验证。
 - PNG 依赖不可用：交付自包含 HTML 和卡片 IR，明确说明“未生成 PNG”；不得暗示截图已完成。
-- MP4 依赖或浏览器不可用：交付 `xhs-video/v1`、Markdown 分镜和 props，明确说明“未生成 MP4”。渲染先写临时文件并校验，失败时保留已有 MP4，不得留下半成品。
+- MP4 依赖或浏览器不可用：保留并交付已经校验的视频 IR 与 props；v1 同时交付 Markdown 分镜，v2 同时保留内容寻址 WAV 资产。明确说明“未生成 MP4”。渲染先写临时文件并校验，失败时保留已有 MP4，不得留下半成品。
 
 ## 边界
 
@@ -94,4 +104,4 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
 - 不调用未经现场验证的私有评论接口，不把笔记互动计数误称为评论正文。
 - 不输出普通用户主页标识；原始数据与发布稿分开保存，不提交 Cookie、Token 或未脱敏导出。
 - 短引原评论仅用于证据定位；避免大段复制，并尊重平台规则与原作者权益。
-- 当前视频输出没有 TTS、配音合成或音轨，`audio.kind=none`；口播仅是脚本和字幕来源。Remotion 为可选依赖，使用前遵守其[特殊许可](https://www.remotion.dev/docs/license)。
+- `xhs-video/v1` 始终静音，`audio.kind=none`。`xhs-video/v2` 只导入用户提供的外部 WAV；没有内置 TTS、配音服务或 API Key 读取。基础 PCM 活动检测不等于听感、内容或版权验证，用户确认也不等于工具核验。Remotion 为可选依赖，使用前遵守其[特殊许可](https://www.remotion.dev/docs/license)。

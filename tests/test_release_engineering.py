@@ -1,15 +1,17 @@
 import json
+import sys
 import tempfile
 import unittest
 import wave
 from pathlib import Path
 from unittest import mock
 
-import prepare_ci_voiceover
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / ".agents" / "skills" / "xhs-question-solutions"
+sys.path.insert(0, str(ROOT / "tests"))
+
+import prepare_ci_voiceover  # noqa: E402
 
 
 class ReleaseEngineeringTests(unittest.TestCase):
@@ -31,17 +33,15 @@ class ReleaseEngineeringTests(unittest.TestCase):
             "--project-dir",
             "--confirm-audio-reviewed",
             "--confirm-audio-rights",
-            "v1-composition-smoke.mp4",
-            "v2-composition-smoke.mp4",
-            "audio_streams'])==(1080,1920,0)",
-            "audio_codec']=='aac'",
-            "audio_sample_rate']==48000",
-            "audio_channels']==1",
+            "render_ci_video_smoke.py build/ci/v1 build/ci/v2",
         )
         for fragment in required_fragments:
             self.assertIn(fragment, workflow)
         self.assertNotIn("playwright install", workflow)
         self.assertNotIn("remotion browser", workflow)
+        helper = (ROOT / "tests" / "render_ci_video_smoke.py").read_text(encoding="utf-8")
+        for fragment in ("--project-dir", "--frame-range", "audio_streams", "audio_codec", "audio_sample_rate", "audio_channels", "CAPTION_OVERFLOW"):
+            self.assertIn(fragment, helper)
 
     def test_ci_voiceover_fixture_is_explicit_non_speech_pcm_with_activity(self):
         manifest = {

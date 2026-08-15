@@ -1,12 +1,14 @@
 import copy
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,7 +17,14 @@ SCRIPTS = SKILL / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from import_voiceover import build_voiceover_project  # noqa: E402
-from render_video import render_mp4s, validate_video_ir  # noqa: E402
+from render_video import (  # noqa: E402
+    _parse_frame_range,
+    _with_frame_range_targets,
+    _write_render_summary,
+    load_video_projects,
+    render_mp4s,
+    validate_video_ir,
+)
 from tests.test_voiceover_import import ready_manifest, source_ir, write_wav  # noqa: E402
 from tests.test_video_pipeline import build_video_ir, sample  # noqa: E402
 
@@ -59,6 +68,73 @@ class VoiceoverRenderTests(unittest.TestCase):
                 value = copy.deepcopy(self.project)
                 mutate(value)
                 self.assertTrue(validate_video_ir(value), label)
+
+    def test_existing_v2_project_loads_exact_props_for_transactional_rendering(self):
+        ir, written = load_video_projects(self.project_dir)
+        self.assertEqual(self.project, ir)
+        self.assertEqual(len(ir["videos"]), len(written))
+        for video, props_path, mp4_path in written:
+            self.assertEqual({"schema": ir["schema"], "video": video}, json.loads(props_path.read_text(encoding="utf-8")))
+            self.assertEqual(props_path.name.removesuffix(".props.json") + ".mp4", mp4_path.name)
+        broken = self.root / "broken-project"
+        shutil.copytree(self.project_dir, broken)
+        next(broken.glob("*.props.json")).write_text("{}\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "props"):
+            load_video_projects(broken)
+        malformed = self.root / "malformed-props-project"
+        shutil.copytree(self.project_dir, malformed)
+        props_path = next(malformed.glob("*.props.json"))
+        payload = json.loads(props_path.read_text(encoding="utf-8"))
+        payload["video"]["video_id"] = {}
+        props_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "props"):
+            load_video_projects(malformed)
+
+    def test_existing_project_rejects_props_symlinks_that_escape_the_project_root(self):
+        project = self.root / "symlink-project"
+        shutil.copytree(self.project_dir, project)
+        props_path = next(project.glob("*.props.json"))
+        outside = self.root / "outside.props.json"
+        shutil.copy2(props_path, outside)
+        props_path.unlink()
+        try:
+            os.symlink(outside, props_path)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"symlink creation is unavailable: {error}")
+        with self.assertRaisesRegex(ValueError, "symlink|root"):
+            load_video_projects(project)
+
+    def test_render_summary_failure_preserves_the_previous_summary(self):
+        output = self.root / "summary-project"
+        output.mkdir()
+        target = output / "mp4-render-summary.json"
+        target.write_text("old-summary\n", encoding="utf-8")
+        with mock.patch("render_video.os.replace", side_effect=OSError("forced replace failure")):
+            with self.assertRaisesRegex(RuntimeError, "MP4 files were installed"):
+                _write_render_summary(output, [{"codec": "h264"}])
+        self.assertEqual("old-summary\n", target.read_text(encoding="utf-8"))
+        self.assertFalse(list(output.glob(".*.writing-*.json")))
+
+    def test_frame_range_smoke_outputs_cannot_overwrite_full_video_targets(self):
+        self.assertEqual((0, 2), _parse_frame_range("0:2"))
+        with self.assertRaises(ValueError):
+            _parse_frame_range("2:0")
+        _ir, written = load_video_projects(self.project_dir)
+        ranged = _with_frame_range_targets(written, (0, 2))
+        self.assertEqual(len(written), len(ranged))
+        for original, partial in zip(written, ranged):
+            self.assertEqual(original[:2], partial[:2])
+            self.assertNotEqual(original[2], partial[2])
+            self.assertTrue(partial[2].name.endswith(".frames-0-2.mp4"))
+
+    def test_project_cli_reports_missing_project_without_a_traceback(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "render_video.py"), "--project-dir", str(self.root / "missing"), "--mp4"],
+            text=True, encoding="utf-8", capture_output=True, check=False,
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertEqual(1, len(result.stderr.strip().splitlines()), result.stderr)
 
     def test_v2_validator_rejects_nonstring_roles_and_mapping_keys_without_raw_exceptions(self):
         mutations = (

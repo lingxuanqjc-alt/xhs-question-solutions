@@ -139,40 +139,5 @@ jobs:
           python -X utf8 .agents/skills/xhs-question-solutions/scripts/import_voiceover.py build build/ci/v1/video-projects.json build/ci/voiceover/manifest.json build/ci/v2 --confirm-audio-reviewed --confirm-audio-rights
           python -X utf8 -c "import json; from pathlib import Path; project=json.loads(Path('build/ci/v2/video-projects.json').read_text(encoding='utf-8')); assert project['schema']=='xhs-video/v2'; assert project['videos'][0]['meta']['audio']['origin']=='synthetic_ai'; assert list(Path('build/ci/v2/assets/voiceover').glob('*.wav'))"
 
-      - name: Render and ffprobe silent and voiced three-frame compositions on Ubuntu
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          browser="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
-          test -n "$browser"
-          test -x "$browser"
-          v1_props=(build/ci/v1/*.props.json)
-          test "${#v1_props[@]}" -eq 1
-          node .agents/skills/xhs-question-solutions/scripts/render_video.mjs \
-            --props "${v1_props[0]}" \
-            --output build/ci/v1/v1-composition-smoke.mp4 \
-            --browser "$browser" \
-            --frame-range 0:2 \
-            > build/ci/v1/v1-composition-smoke.json
-          python -X utf8 -c "import json; from pathlib import Path; video=Path('build/ci/v1/v1-composition-smoke.mp4'); data=video.read_bytes(); summary=json.loads(Path('build/ci/v1/v1-composition-smoke.json').read_text(encoding='utf-8')); probe=summary['probe']; assert len(data)>16 and b'ftyp' in data[:64]; assert summary['codec']=='h264' and summary['rendered_frame_range']==[0,2] and summary['file_size']==len(data); assert probe['codec']=='h264' and (probe['width'],probe['height'],probe['audio_streams'])==(1080,1920,0)"
-          v2_props=(build/ci/v2/*.props.json)
-          test "${#v2_props[@]}" -eq 1
-          node .agents/skills/xhs-question-solutions/scripts/render_video.mjs \
-            --props "${v2_props[0]}" \
-            --output build/ci/v2/v2-composition-smoke.mp4 \
-            --browser "$browser" \
-            --frame-range 0:2 \
-            > build/ci/v2/v2-composition-smoke.json
-          python -X utf8 -c "import json; from pathlib import Path; video=Path('build/ci/v2/v2-composition-smoke.mp4'); data=video.read_bytes(); summary=json.loads(Path('build/ci/v2/v2-composition-smoke.json').read_text(encoding='utf-8')); probe=summary['probe']; assert len(data)>16 and b'ftyp' in data[:64]; assert summary['codec']=='h264' and summary['rendered_frame_range']==[0,2] and summary['file_size']==len(data); assert probe['codec']=='h264' and probe['audio_streams']==1 and probe['audio_codec']=='aac' and probe['audio_sample_rate']==48000 and probe['audio_channels']==1"
-          python -X utf8 -c "import json; from pathlib import Path; source=Path('${v1_props[0]}'); data=json.loads(source.read_text(encoding='utf-8')); scene=data['video']['scenes'][0]; scene['narration']='W'*40; scene['captions']=[{'text':'W'*40,'startMs':200,'endMs':2700,'timestampMs':None,'confidence':None}]; Path('build/ci/v1/overflow.props.json').write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')"
-          if node .agents/skills/xhs-question-solutions/scripts/render_video.mjs \
-            --props build/ci/v1/overflow.props.json \
-            --output build/ci/v1/overflow.mp4 \
-            --browser "$browser" \
-            --frame-range 0:2 \
-            > build/ci/v1/overflow.stdout 2> build/ci/v1/overflow.stderr; then
-            echo "Expected caption overflow render to fail" >&2
-            exit 1
-          fi
-          grep -F 'CAPTION_OVERFLOW' build/ci/v1/overflow.stderr
-          test ! -e build/ci/v1/overflow.mp4
+      - name: Render and ffprobe silent and voiced three-frame compositions
+        run: python -X utf8 tests/render_ci_video_smoke.py build/ci/v1 build/ci/v2

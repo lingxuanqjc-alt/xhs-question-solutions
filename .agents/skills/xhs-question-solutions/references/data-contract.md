@@ -144,15 +144,116 @@
 - 当前渲染配置为 1080×1920、30 fps、H.264、无音轨；`meta.audio.kind` 必须为 `none`，不表示已生成 TTS 或配音。
 - 发布前检对视频 IR 使用严格标量类型：`width`、`height`、`fps`、`duration_ms`、`duration_in_frames`、场景 `index/start_ms/end_ms` 和字幕时间必须为 JSON 整数且不能是布尔值；视频、笔记、场景和证据 ID 必须是非空字符串。`1080.0` 即使数值等于 `1080` 也属于无效契约。
 
+## Voiceover manifest: `xhs-voiceover-manifest/v1`
+
+`import_voiceover.py init` 从一份完整有效的 `xhs-video/v1` 生成清单。`source_ir_sha256`、视频/场景顺序、`narration`、`narration_sha256` 和 cue 文本由工具绑定，用户只填写来源、权利基础、WAV 文件与采样点：
+
+```json
+{
+  "schema": "xhs-voiceover-manifest/v1",
+  "source_ir_sha256": "sha256:<64 lowercase hex>",
+  "videos": [
+    {
+      "video_id": "note:demo-mold-001",
+      "origin": "human_recorded",
+      "rights_basis": "self_recorded",
+      "scenes": [
+        {
+          "scene_id": "note:demo-mold-001:scene-01-hook",
+          "narration": "与 v1 完全一致的口播",
+          "narration_sha256": "sha256:<64 lowercase hex>",
+          "file": "audio/video-001/scene-001.wav",
+          "cues": [
+            {"text": "与 v1 字幕块完全一致", "start_sample": 0, "end_sample": 96000}
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `origin=human_recorded` 只允许 `rights_basis=self_recorded|licensed`；`origin=synthetic_ai` 只允许 `synthetic_service_terms_confirmed|licensed`。
+- `file` 必须是清单目录内的相对 POSIX 路径，不接受盘符、反斜杠、绝对路径、`..` 或符号链接逃逸。
+- 每个文件必须为 RIFF PCM s16le、48 kHz、单声道、16-bit；每条 cue 至少 1200 ms，顺序不重叠，且阅读速度不超过每秒 10 个显示单位。
+- cue 文本和拼接结果必须逐字等于 v1 字幕和口播；采样点由用户对听填写，工具不做转写或语义对齐。
+
+## Voiced Video IR: `xhs-video/v2`
+
+`build` 以音频采样数重新建立 30 fps 时间轴，生成内容寻址的音频资产、逐视频 props 和 `video-projects.json`：
+
+```json
+{
+  "schema": "xhs-video/v2",
+  "source": {"schema": "xhs-video/v1", "sha256": "sha256:<64 lowercase hex>"},
+  "videos": [
+    {
+      "profile": "xhs-vertical-1080x1920-v2-voiced",
+      "meta": {
+        "audio": {
+          "kind": "external_voiceover",
+          "layout": "per_scene",
+          "origin": "human_recorded",
+          "reviewed": true,
+          "rights_basis": "self_recorded",
+          "rights_confirmed": true,
+          "disclosure_required": false,
+          "disclosure_text": null,
+          "signal_check": {"kind": "basic_pcm_activity", "audibility_verified": false},
+          "attestation": {
+            "kind": "user_declared_review_and_rights",
+            "source_ir_sha256": "sha256:<source digest>",
+            "manifest_sha256": "sha256:<manifest digest>",
+            "video_id": "note:demo-mold-001",
+            "origin": "human_recorded",
+            "rights_basis": "self_recorded",
+            "audio_sha256": ["sha256:<scene audio digest>"],
+            "audio_reviewed": true,
+            "audio_rights_confirmed": true,
+            "license_verified_by_tool": false,
+            "sha256": "sha256:<binding digest>"
+          }
+        }
+      },
+      "scenes": [
+        {
+          "start_frame": 0,
+          "end_frame": 180,
+          "audio": {
+            "kind": "external_voiceover_clip",
+            "path": "assets/voiceover/<audio-sha256>.wav",
+            "sha256": "sha256:<audio digest>",
+            "narration_sha256": "sha256:<narration digest>",
+            "codec": "pcm_s16le",
+            "sample_rate_hz": 48000,
+            "channels": 1,
+            "bits_per_sample": 16,
+            "sample_count": 288000
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+示例只展示 v2 新增或改写的字段；视频、场景、字幕、证据和附录仍保留 v1 的完整字段并接受严格未知字段检查。每场帧数是 `ceil(sample_count / 1600)`，总时长仍须为 60–90 秒。
+
+`reviewed=true`、`rights_confirmed=true` 以及 attestation 来自两个独立 CLI 确认参数，只记录用户声明。基础信号门只确认存在超过近静音阈值的有限 PCM 活动；它不验证可听性、语言、内容、音画同步、声音自然度或使用权，因此固定保留 `audibility_verified=false` 与 `license_verified_by_tool=false`。工具不生成音频、不调用 TTS，也不读取 API Key。
+
+合成来源必须设置 `origin=synthetic_ai`、匹配的 `rights_basis`，并在 hook 与 disclosure 场景携带结构化 `synthetic_audio` notice；渲染首帧使用唯一标签“旁白由AI合成”，不得在 hook 字幕中重复、否定或冲突。v2 MP4 校验要求一条 H.264 视频流与一条 AAC 48 kHz 单声道音轨，音频、视频与期望帧时长误差不超过 0.2 秒。
+
+清单构建持有同级排他锁并写入暂存目录；所有视频和音频通过后才整体替换旧输出。失败保留上一套完整目录。`render_video.py --project-dir <dir> --mp4` 会重验 IR，并要求每个视频恰好对应一个根目录内内容完全一致的 props；输出为同 stem `.mp4`。批处理同样先锁定全部目标、渲染和探测全部暂存文件，再整体替换；清理失败会显式产生 warning，不会把已经安装的新成片回滚成旧版本。
+
 ## Publish Check: `xhs-publish-check/v1`
 
-发布前检必须提供一个精确的 `profile_id` 和 `ai_content_kinds` 集合。集合按 `none`、`assistive_text_only`、`synthetic_visual`、`synthetic_audio`、`realistic_altered` 的稳定顺序输出；`none` 与其他类型互斥，`assistive_text_only` 与三个合成媒体类型互斥，多个合成媒体类型可以并存并取披露义务并集。
+发布前检必须确定一个精确的 `profile_id` 和最终 `ai_content_kinds` 集合。调用方声明画面或修改类型；v2 的 `synthetic_ai` 来源会确定性补入 `synthetic_audio`，再与显式类型取并集。集合按 `none`、`assistive_text_only`、`synthetic_visual`、`synthetic_audio`、`realistic_altered` 的稳定顺序输出；`none` 与其他类型互斥，`assistive_text_only` 与三个合成媒体类型互斥，多个合成媒体类型可以并存并取披露义务并集。
 
 每个 profile 来源都记录 `authority`、`evidence_status`、`checked_at` 与 `applies_to`。`evidence_status` 只允许 `supports`、`no_public_value`、`conflicting`、`project_policy`；公开官方资料没有数值时必须保留 `unknown/manual`。`cross_platform_master_60` 是项目母版策略，不是平台发布资格。
 
 来源身份不仅按大厂域名判断；每个 `profile_id + source_id` 都绑定明确的 HTTPS 主机、完整页面路径和 query 策略。路径必须精确相等；抖音用户协议必须且只能携带 `id=6773906068725565448`，YouTube 帮助页只允许零个或一个非空 `hl` 参数，其他当前内置来源默认要求空 query。相邻数字、附加子路径、`-user` 后缀、未知或额外 query、其他平台官方页面、同域随机用户路径或未登记 source ID 都必须拒绝。
 
-当前视频 IR 只能证明静音素材，所以所有要求实际音轨的 `hard` 或 `project_gate` 都必须阻断。`platform_setting`、目标账号预览和未知官方数值只能产生 `needs_review`，不能伪造为已完成。
+v1 只能证明静音素材，所以所有要求实际音轨的 `hard` 或 `project_gate` 都必须阻断。v2 会重新读取清单目录内的 WAV，校验路径、格式、哈希、采样数和基础信号后记录技术存在性；但听感和许可证仍是人工项。`platform_setting`、目标账号预览和未知官方数值只能产生 `needs_review`，不能伪造为已完成。
 
 `actual.platform_disclosure_required` 是三态值：任一已知义务为真时是 `true`；没有已知真值但仍有待判定义务时是 `null`；全部明确无需时才是 `false`。`actual.determination_pending` 单独说明义务集合中是否仍含待判定项。
 

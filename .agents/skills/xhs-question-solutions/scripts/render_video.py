@@ -787,6 +787,80 @@ def write_video_projects(canonical, analysis, output_dir):
     return ir, written
 
 
+def load_video_projects(project_dir):
+    try:
+        project_dir = Path(project_dir).resolve(strict=True)
+    except OSError as error:
+        raise ValueError("video project directory does not exist") from error
+    if not project_dir.is_dir(): raise ValueError("video project path must be a directory")
+    project_file = project_dir / "video-projects.json"
+    if project_file.is_symlink() or not project_file.is_file():
+        raise ValueError("video-projects.json must be a regular file in the project root")
+    try:
+        ir = json.loads(project_file.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("video project is unreadable: video-projects.json") from error
+    errors = validate_video_ir(ir)
+    if errors:
+        raise ValueError("video project validation failed:\n" + "\n".join(errors))
+    expected = {video["video_id"]: video for video in ir["videos"]}
+    matched = {}
+    for props_path in sorted(project_dir.glob("*.props.json")):
+        try: resolved_props = props_path.resolve(strict=True)
+        except OSError as error: raise ValueError(f"video props are unreadable: {props_path.name}") from error
+        if props_path.is_symlink() or not props_path.is_file() or resolved_props.parent != project_dir:
+            raise ValueError(f"video props must be regular files in the project root, not symlinks: {props_path.name}")
+        try:
+            payload = json.loads(props_path.read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ValueError(f"video props are unreadable: {props_path.name}") from error
+        if not isinstance(payload, dict) or set(payload) != {"schema", "video"} or payload.get("schema") != ir["schema"] or not isinstance(payload.get("video"), dict):
+            raise ValueError(f"video props do not match the project schema: {props_path.name}")
+        video_id = payload["video"].get("video_id")
+        if not _nonempty_string(video_id) or video_id not in expected or payload["video"] != expected[video_id] or video_id in matched:
+            raise ValueError(f"video props do not exactly match one project video: {props_path.name}")
+        matched[video_id] = props_path
+    if set(matched) != set(expected):
+        raise ValueError("video props set does not exactly cover video-projects.json")
+    written = []
+    for video in ir["videos"]:
+        props_path = matched[video["video_id"]]
+        stem = props_path.name.removesuffix(".props.json")
+        written.append((video, props_path, project_dir / f"{stem}.mp4"))
+    return ir, written
+
+
+def _parse_frame_range(value):
+    match = re.fullmatch(r"(0|[1-9][0-9]*):(0|[1-9][0-9]*)", str(value))
+    if not match or int(match.group(2)) < int(match.group(1)):
+        raise ValueError("frame range must be START:END with END >= START")
+    return int(match.group(1)), int(match.group(2))
+
+
+def _with_frame_range_targets(written, frame_range):
+    start, end = frame_range
+    return [
+        (video, props, Path(target).with_name(f"{Path(target).stem}.frames-{start}-{end}{Path(target).suffix}"))
+        for video, props, target in written
+    ]
+
+
+def _write_render_summary(output_dir, summaries, frame_range=None):
+    suffix = f".frames-{frame_range[0]}-{frame_range[1]}" if frame_range else ""
+    target = Path(output_dir) / f"mp4-render-summary{suffix}.json"
+    staging = target.with_name(f".{target.stem}.writing-{uuid.uuid4().hex}{target.suffix}")
+    payload = json.dumps({"backend": "remotion", "videos": summaries}, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    try:
+        staging.write_text(payload, encoding="utf-8")
+        os.replace(staging, target)
+    except OSError as error:
+        raise RuntimeError("MP4 files were installed but render summary update failed; the prior summary, if any, is unchanged") from error
+    finally:
+        if staging.exists():
+            try: staging.unlink()
+            except OSError: pass
+
+
 def _record_cleanup_warning(message, cleanup_warnings):
     cleanup_warnings.append(message)
     try: warnings.warn(message, RuntimeWarning, stacklevel=3)
@@ -923,17 +997,34 @@ def render_mp4s(written, node=None, browser=None, frame_range=None, runner=subpr
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build xhs-video/v1, Markdown, Remotion props, and optional MP4")
-    parser.add_argument("canonical", type=Path); parser.add_argument("analysis", type=Path); parser.add_argument("output_dir", type=Path)
-    parser.add_argument("--mp4", action="store_true", help="also render silent H.264 MP4 using the pinned optional Remotion runtime")
+    parser = argparse.ArgumentParser(description="Build xhs-video/v1 or render an existing validated v1/v2 project")
+    parser.add_argument("canonical", nargs="?", type=Path); parser.add_argument("analysis", nargs="?", type=Path); parser.add_argument("output_dir", nargs="?", type=Path)
+    parser.add_argument("--project-dir", type=Path, help="render an existing validated xhs-video/v1 or xhs-video/v2 project")
+    parser.add_argument("--mp4", action="store_true", help="render H.264 MP4; v1 stays silent and v2 includes AAC 48 kHz mono")
+    parser.add_argument("--frame-range", type=_parse_frame_range, metavar="START:END", help="render a diagnostic partial MP4 to a distinct .frames-START-END.mp4 target")
     parser.add_argument("--node", type=Path); parser.add_argument("--browser", type=Path)
-    args = parser.parse_args(); canonical = load_jsonl(args.canonical); analysis = json.loads(args.analysis.read_text(encoding="utf-8-sig"))
-    ir, written = write_video_projects(canonical, analysis, args.output_dir)
-    print(f"rendered {len(ir['videos'])} video project(s): {args.output_dir}")
-    if args.mp4:
-        summaries = render_mp4s(written, args.node, args.browser)
-        (args.output_dir / "mp4-render-summary.json").write_text(json.dumps({"backend": "remotion", "videos": summaries}, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        print(f"rendered {len(summaries)} silent 1080x1920 H.264 MP4 video(s)")
+    args = parser.parse_args()
+    try:
+        if args.project_dir:
+            if any((args.canonical, args.analysis, args.output_dir)): parser.error("--project-dir cannot be combined with canonical, analysis, or output_dir")
+            if not args.mp4: parser.error("--project-dir requires --mp4")
+            output_dir = args.project_dir
+            ir, written = load_video_projects(output_dir)
+        else:
+            if not all((args.canonical, args.analysis, args.output_dir)): parser.error("canonical, analysis, and output_dir are required unless --project-dir is used")
+            output_dir = args.output_dir
+            canonical = load_jsonl(args.canonical); analysis = json.loads(args.analysis.read_text(encoding="utf-8-sig"))
+            ir, written = write_video_projects(canonical, analysis, output_dir)
+            print(f"rendered {len(ir['videos'])} video project(s): {output_dir}")
+        if args.frame_range and not args.mp4: parser.error("--frame-range requires --mp4")
+        if args.mp4:
+            if args.frame_range: written = _with_frame_range_targets(written, args.frame_range)
+            summaries = render_mp4s(written, args.node, args.browser, frame_range=args.frame_range)
+            _write_render_summary(output_dir, summaries, args.frame_range)
+            audio_label = "AAC 48 kHz mono" if ir["schema"] == VOICEOVER_SCHEMA else "no audio"
+            print(f"rendered {len(summaries)} 1080x1920 H.264 MP4 video(s): {audio_label}")
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, RuntimeError) as error:
+        parser.exit(2, "error: " + " | ".join(str(error).splitlines()) + "\n")
 
 
 if __name__ == "__main__": main()

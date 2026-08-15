@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0] - 2026-08-15
+
+### Added
+
+- Reviewed external per-scene WAV import from silent `xhs-video/v1` into voiced `xhs-video/v2`, with source/narration/audio hash binding, cue timing and transactional directory replacement.
+- Deterministic rendering and media probing for one H.264 video stream plus one AAC 48 kHz mono audio stream.
+- `xhs-video/v2` support in the platform publish checker, including derived synthetic-audio disclosure facts and on-disk WAV verification.
+
+### Changed
+
+- Voiceover remains bring-your-own audio: the project does not provide TTS, call a speech API or read an API key.
+- Audio review and rights are two explicit user attestations; basic PCM activity is not audibility verification, and the tool does not verify licenses.
+- Synthetic voiceover carries the fixed first-frame disclosure “旁白由AI合成”. A generated test tone is pipeline test data, not a real voiceover or release asset.
+- Platform checks preserve the three-state `pass` / `needs_review` / `blocked` result; manual audio and rights items remain `needs_review` even when structural checks pass.
+
 ## [0.4.0] - 2026-08-15
 
 ### Added
