@@ -5,7 +5,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -339,6 +341,7 @@ class VideoContractTests(unittest.TestCase):
             ("non-string evidence id", lambda video: video["scenes"][2].__setitem__("evidence_comment_ids", [{}])),
             ("empty appendix evidence id", lambda video: video["appendix"]["evidence"][0].__setitem__("comment_id", "")),
             ("non-string unsafe evidence id", lambda video: video.__setitem__("unsafe_evidence_comment_ids", [{}])),
+            ("nonhashable scene role", lambda video: video["scenes"][0].__setitem__("role", [])),
         )
         for label, mutate in mutations:
             with self.subTest(case=label):
@@ -390,6 +393,57 @@ class VideoContractTests(unittest.TestCase):
                 self.assertIn("Invalid xhs-video/v1 props", message)
                 self.assertNotIn("TypeError", message)
                 self.assertNotIn("browser", message.lower())
+
+    def test_node_caption_density_matches_python_for_cjk_emoji_and_latin(self):
+        canonical, analysis = sample()
+        renderer = SCRIPTS / "render_video.mjs"
+        for label, text in (
+            ("cjk", "密" * 13), ("emoji", "😀" * 13), ("supplementary han", "𠀀" * 13),
+            ("common symbol", "☀" * 13), ("ambiguous", "Ω" * 25), ("latin", "a" * 26),
+        ):
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as tmp:
+                video = copy.deepcopy(build_video_ir(canonical, analysis)["videos"][0])
+                caption = video["scenes"][0]["captions"][0]
+                caption["text"] = text
+                caption["endMs"] = caption["startMs"] + 1_200
+                video["scenes"][0]["narration"] = "".join(item["text"] for item in video["scenes"][0]["captions"])
+                python_errors = validate_video_ir({"schema": SCHEMA, "videos": [video]})
+                self.assertTrue(any("CAPTION_DENSITY" in error for error in python_errors), python_errors)
+                props = Path(tmp) / "dense.props.json"
+                props.write_text(json.dumps({"schema": SCHEMA, "video": video}, ensure_ascii=False), encoding="utf-8")
+                result = subprocess.run(
+                    ["node", str(renderer), "--props", str(props), "--output", str(Path(tmp) / "out.mp4")],
+                    text=True, encoding="utf-8", capture_output=True, check=False,
+                )
+                self.assertEqual(3, result.returncode, result.stderr + result.stdout)
+                self.assertIn("CAPTION_DENSITY", result.stderr + result.stdout)
+                self.assertNotIn("browser", (result.stderr + result.stdout).lower())
+
+    def test_half_and_zero_width_caption_policy_matches_in_python_and_node(self):
+        canonical, analysis = sample()
+        for label, text in (
+            ("ambiguous", "Ω" * 13), ("combining acute", "\u0301" * 25),
+            ("new combining mark", "\u1acf" * 25), ("variation selector", "\ufe0f" * 25),
+            ("supplementary variation selector", "\U000e0100" * 25), ("zwj", "\u200d" * 25),
+        ):
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as tmp:
+                video = copy.deepcopy(build_video_ir(canonical, analysis)["videos"][0])
+                caption = video["scenes"][0]["captions"][0]
+                caption["text"] = text
+                caption["endMs"] = caption["startMs"] + 1_200
+                video["scenes"][0]["narration"] = "".join(item["text"] for item in video["scenes"][0]["captions"])
+                python_errors = validate_video_ir({"schema": SCHEMA, "videos": [video]})
+                self.assertFalse(any("CAPTION_DENSITY" in error for error in python_errors), python_errors)
+                props = Path(tmp) / "width-policy.props.json"
+                output = Path(tmp) / "existing.mp4"
+                props.write_text(json.dumps({"schema": SCHEMA, "video": video}, ensure_ascii=False), encoding="utf-8")
+                output.write_bytes(b"existing")
+                result = subprocess.run(
+                    ["node", str(SCRIPTS / "render_video.mjs"), "--props", str(props), "--output", str(output)],
+                    text=True, encoding="utf-8", capture_output=True, check=False,
+                )
+                self.assertNotIn("CAPTION_DENSITY", result.stderr + result.stdout)
+                self.assertEqual(2, result.returncode, result.stderr + result.stdout)
 
     def test_node_boundary_rejects_combined_removal_of_every_display_warning(self):
         canonical, analysis = sample()
@@ -509,6 +563,58 @@ class VideoContractTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "previous MP4"):
                 render_mp4s(batch, node="node", runner=second_fails)
+            self.assertEqual(b"old-first", first.read_bytes())
+            self.assertEqual(b"old-second", second.read_bytes())
+
+    def test_installed_mp4_survives_backup_and_lock_cleanup_failures_with_precise_warnings(self):
+        canonical, analysis = sample()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, written = write_video_projects(canonical, analysis, Path(tmp))
+            video, _props, target = written[0]
+            target.write_bytes(b"old-complete-video")
+
+            def success_runner(command, **_kwargs):
+                output = Path(command[command.index("--output") + 1])
+                payload = b"\x00\x00\x00\x18ftypisom" + b"new-complete-video"
+                output.write_bytes(payload)
+                summary = {"codec": "h264", "width": 1080, "height": 1920, "fps": 30,
+                           "duration_in_frames": 2250, "rendered_frame_range": None, "audio": "none", "file_size": len(payload),
+                           "probe": {"codec": "h264", "width": 1080, "height": 1920, "audio_streams": 0, "duration_seconds": 75.0}}
+                return subprocess.CompletedProcess(command, 0, stdout=json.dumps(summary), stderr="")
+
+            original_unlink = Path.unlink
+            def fail_cleanup_unlink(path, *args, **kwargs):
+                if ".backup-" in path.name or path.name.endswith(".render.lock"):
+                    raise PermissionError(f"{path.name} busy")
+                return original_unlink(path, *args, **kwargs)
+
+            with warnings.catch_warnings(record=True) as caught, mock.patch.object(Path, "unlink", fail_cleanup_unlink):
+                warnings.simplefilter("always")
+                summaries = render_mp4s(written, node="node", runner=success_runner)
+            self.assertIn(b"new-complete-video", target.read_bytes())
+            self.assertTrue(list(Path(tmp).glob(".*.backup-*.mp4")))
+            self.assertTrue(any("backup" in warning for warning in summaries[0]["cleanup_warnings"]))
+            self.assertTrue(target.with_name(f".{target.name}.render.lock").exists())
+            self.assertTrue(any("output lock cleanup" in warning for warning in summaries[0]["cleanup_warnings"]))
+            emitted = [str(item.message) for item in caught]
+            self.assertTrue(any("backup cleanup" in warning for warning in emitted))
+            self.assertTrue(any("output lock cleanup" in warning for warning in emitted))
+
+    def test_output_lock_contention_fails_before_render_and_releases_acquired_locks(self):
+        canonical, analysis = sample()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, written = write_video_projects(canonical, analysis, Path(tmp))
+            video, props, first = written[0]
+            second = first.with_name("second.mp4")
+            first.write_bytes(b"old-first"); second.write_bytes(b"old-second")
+            second_lock = second.with_name(f".{second.name}.render.lock")
+            second_lock.write_text("busy", encoding="utf-8")
+            calls = []
+            with self.assertRaisesRegex(RuntimeError, "output lock"):
+                render_mp4s([(video, props, second), (video, props, first)], node="node", runner=lambda *args, **kwargs: calls.append(args))
+            self.assertEqual([], calls)
+            self.assertFalse(first.with_name(f".{first.name}.render.lock").exists())
+            self.assertTrue(second_lock.exists())
             self.assertEqual(b"old-first", first.read_bytes())
             self.assertEqual(b"old-second", second.read_bytes())
 

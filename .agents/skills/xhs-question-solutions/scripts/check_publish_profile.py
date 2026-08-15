@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Check xhs-video/v1 against dated, source-traceable platform profiles."""
+"""Check validated xhs-video/v1 or xhs-video/v2 against dated platform profiles."""
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -12,10 +13,13 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlparse
 
 from render_video import UNSAFE_NOTICE_CODE, UNSAFE_WARNING, validate_video_ir
+from import_voiceover import VoiceoverError, _pcm_wav, _resolve_audio
 
 
 REPORT_SCHEMA = "xhs-publish-check/v1"
 CATALOG_SCHEMA = "xhs-platform-profiles/v1"
+SILENT_VIDEO_SCHEMA = "xhs-video/v1"
+VOICEOVER_VIDEO_SCHEMA = "xhs-video/v2"
 AI_KINDS = ("none", "assistive_text_only", "synthetic_visual", "synthetic_audio", "realistic_altered")
 SYNTHETIC_AI_KINDS = {"synthetic_visual", "synthetic_audio", "realistic_altered"}
 CHECK_IDS = ("resolution", "aspect_ratio", "fps", "duration", "audio", "ai_disclosure", "platform_preview")
@@ -512,11 +516,12 @@ def _validate_publish_input(video_ir):
         return [f"MALFORMED $: {exc}"]
 
 
-def _invalid_report(profile_id, ai_kinds, errors):
+def _invalid_report(profile_id, ai_kinds, errors, derived_ai_kinds=()):
     return {
         "schema": REPORT_SCHEMA,
         "profile_id": profile_id,
         "ai_content_kinds": list(ai_kinds or []),
+        "derived_ai_kinds": list(derived_ai_kinds),
         "overall_status": "blocked",
         "errors": errors,
         "videos": [],
@@ -545,6 +550,127 @@ def _normalize_ai_kinds(value):
     if "assistive_text_only" in kinds and SYNTHETIC_AI_KINDS.intersection(kinds):
         return kinds, [_error("AI_KIND_CONFLICT", "$.ai_content_kinds", "assistive_text_only cannot be combined with synthetic kinds")]
     return kinds, []
+
+
+def _unverified_asset_facts(video):
+    return {
+        "asset_bytes_verified": None,
+        "technical_audio_presence": None,
+        "basic_signal_verified": None,
+        "verified_asset_count": 0,
+        "declared_asset_count": len(video["scenes"]),
+    }
+
+
+def _verify_v2_assets(video_ir, asset_root):
+    verification = [_unverified_asset_facts(video) for video in video_ir["videos"]]
+    if asset_root is None:
+        return verification, []
+    try:
+        root = Path(asset_root).resolve(strict=True)
+    except (OSError, TypeError, ValueError) as exc:
+        return verification, [_error("ASSET_ROOT_INVALID", "$.asset_root", f"asset root is unavailable: {exc}")]
+    if not root.is_dir():
+        return verification, [_error("ASSET_ROOT_INVALID", "$.asset_root", "asset root must be a directory")]
+
+    errors = []
+    for vi, video in enumerate(video_ir["videos"]):
+        verified_count = 0
+        for si, scene in enumerate(video["scenes"]):
+            clip = scene["audio"]
+            path = f"$.videos[{vi}].scenes[{si}].audio.path"
+            try:
+                resolved = _resolve_audio(root, clip["path"], path)
+                raw, sample_count = _pcm_wav(resolved, path)
+            except VoiceoverError as exc:
+                errors.append(exc.as_dict())
+                continue
+            except (OSError, ValueError) as exc:
+                errors.append(_error("VOICEOVER_FILE_READ", path, f"could not verify audio bytes: {exc}"))
+                continue
+            digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+            if digest != clip["sha256"]:
+                errors.append(_error("VOICEOVER_HASH_MISMATCH", path, "WAV bytes do not match the IR sha256"))
+                continue
+            if sample_count != clip["sample_count"]:
+                errors.append(_error("VOICEOVER_SAMPLE_COUNT_MISMATCH", path, "WAV sample count does not match the IR"))
+                continue
+            verified_count += 1
+        declared_count = len(video["scenes"])
+        complete = verified_count == declared_count
+        verification[vi] = {
+            "asset_bytes_verified": complete,
+            "technical_audio_presence": complete,
+            "basic_signal_verified": complete,
+            "verified_asset_count": verified_count,
+            "declared_asset_count": declared_count,
+        }
+    return verification, errors
+
+
+def _voiceover_facts(video, asset_verification=None):
+    audio = video["meta"]["audio"]
+    attestation = audio["attestation"]
+    signal = audio["signal_check"]
+    scenes = video["scenes"]
+    declared_audio_clips = bool(scenes) and all(
+        isinstance(scene.get("audio"), dict)
+        and scene["audio"].get("kind") == "external_voiceover_clip"
+        for scene in scenes
+    )
+    origin = audio["origin"]
+    derived_ai_kinds = ["synthetic_audio"] if origin == "synthetic_ai" else []
+    strategy = {
+        "self_recorded": "original",
+        "licensed": "licensed",
+        "synthetic_service_terms_confirmed": "synthetic_service_terms",
+    }[audio["rights_basis"]]
+    return {
+        "kind": audio["kind"],
+        "declared_audio_clips": declared_audio_clips,
+        "declared_basic_signal_check": signal["kind"],
+        **(asset_verification or _unverified_asset_facts(video)),
+        "origin": origin,
+        "rights_basis": audio["rights_basis"],
+        "declared_audio_strategy": strategy,
+        "audibility_verified": signal["audibility_verified"],
+        "license_verified_by_tool": attestation["license_verified_by_tool"],
+        "attested_audio_reviewed": attestation["audio_reviewed"],
+        "attested_rights_confirmed": attestation["audio_rights_confirmed"],
+        "manual_audibility_review": not signal["audibility_verified"],
+        "rights_manual_review": not attestation["license_verified_by_tool"],
+        "derived_ai_kinds": derived_ai_kinds,
+    }
+
+
+def _video_facts(schema, video, asset_verification=None):
+    if schema == VOICEOVER_VIDEO_SCHEMA:
+        return _voiceover_facts(video, asset_verification)
+    return {
+        "kind": video["meta"]["audio"]["kind"],
+        "technical_audio_presence": False,
+        "derived_ai_kinds": [],
+    }
+
+
+def _derived_ai_kind_errors(schema, videos, declared_kinds, facts):
+    if schema != VOICEOVER_VIDEO_SCHEMA:
+        return []
+    declared_synthetic_audio = "synthetic_audio" in declared_kinds
+    derived_synthetic_audio = any("synthetic_audio" in item["derived_ai_kinds"] for item in facts)
+    if declared_synthetic_audio == derived_synthetic_audio:
+        return []
+    expected = "include" if derived_synthetic_audio else "exclude"
+    return [_error(
+        "AI_KIND_DERIVATION_MISMATCH",
+        "$.ai_content_kinds",
+        f"the derived project-wide audio-origin union requires the declaration to {expected} synthetic_audio",
+    )]
+
+
+def _effective_ai_kinds(declared_kinds, derived_kinds):
+    explicit_non_audio = {kind for kind in declared_kinds if kind != "synthetic_audio"}
+    return [kind for kind in AI_KINDS if kind in explicit_non_audio or kind in derived_kinds]
 
 
 def _status_for_violation(enforcement):
@@ -650,7 +776,47 @@ def _duration(video, rule):
     return _check_result("duration", "pass", actual, rule, f"{value} ms satisfies {requirement}.")
 
 
-def _audio(video, rule):
+def _audio(video, rule, schema=SILENT_VIDEO_SCHEMA, facts=None):
+    if schema == VOICEOVER_VIDEO_SCHEMA:
+        actual = dict(facts or _voiceover_facts(video))
+        if rule["knowledge"] != "known":
+            return _manual_rule("audio", actual, rule)
+        if not actual["declared_audio_clips"]:
+            return _check_result(
+                "audio", _status_for_violation(rule["enforcement"]), actual, rule,
+                "The validated voiceover IR does not declare an audio clip for every scene.",
+                [rule["manual_check"]] if rule["manual_check"] else [],
+            )
+        manual_actions = [
+            "Listen to the final encoded upload and confirm that the intended speech is audible throughout.",
+            "Manually verify that the declared recording or service rights permit this exact publication use.",
+        ]
+        if rule["manual_check"]:
+            manual_actions.append(rule["manual_check"])
+        if actual["asset_bytes_verified"] is True:
+            evidence = "WAV bytes, PCM format, sha256, sample counts, and a basic signal are verified"
+        else:
+            evidence = (
+                "The IR declares per-scene WAV clips and a basic signal check, but asset bytes were not "
+                "supplied to this API call"
+            )
+        if rule["enforcement"] == "hard":
+            message = (
+                f"{evidence}, but the official sound requirement still needs a human audibility review; "
+                "licensing is not verified by the tool."
+            )
+        elif rule["enforcement"] == "project_gate":
+            message = (
+                f"{evidence}; review and rights are user-attested, but this project delivery gate still needs "
+                "manual audibility and rights review; licensing is not verified by the tool."
+            )
+        else:
+            message = (
+                f"{evidence}, but signal detection and user attestation do not prove final audibility or "
+                "publication rights."
+            )
+        return _check_result("audio", "needs_review", actual, rule, message, manual_actions)
+
     kind, actual = video["meta"]["audio"]["kind"], {"kind": video["meta"]["audio"]["kind"]}
     if rule["knowledge"] != "known":
         return _manual_rule("audio", actual, rule)
@@ -677,37 +843,114 @@ def _normalize_first_frame_label(value):
     return re.sub(r"[\s，,。.!！:：;；]+", "", unicodedata.normalize("NFKC", value))
 
 
-def _declared_first_frame_ai_kinds(video):
-    first_frame_captions = []
-    for scene in video.get("scenes", []):
-        if scene.get("start_ms") != 0:
-            continue
-        for caption in scene.get("captions", []):
-            if (isinstance(caption, dict) and isinstance(caption.get("text"), str)
-                    and caption.get("startMs") == 0 and caption.get("endMs", 0) > 0):
-                first_frame_captions.append(caption["text"])
-    if len(first_frame_captions) != 1:
-        return frozenset()
-    observed = _normalize_first_frame_label(first_frame_captions[0])
+def _canonical_first_frame_ai_kinds(value):
+    observed = _normalize_first_frame_label(value)
     for declared_kinds, variants in FIRST_FRAME_LABEL_VARIANTS.items():
         if observed in {_normalize_first_frame_label(item) for item in variants}:
             return declared_kinds
     return frozenset()
 
 
+def _looks_like_first_frame_ai_declaration(value):
+    observed = re.sub(
+        r"[\s，。！？!?；;：:、·]+",
+        "",
+        unicodedata.normalize("NFKC", value),
+    ).upper()
+    has_ai = "AI" in observed or "人工智能" in observed
+    return has_ai and (
+        any(term in observed for term in ("旁白", "配音", "声音", "音频", "语音"))
+        or (
+            any(term in observed for term in ("画面", "视觉", "视频", "内容"))
+            and any(term in observed for term in ("生成", "合成", "修改", "实拍"))
+        )
+    )
+
+
+def _caption_first_frame_ai_observations(video):
+    observations = []
+    for scene in video.get("scenes", []):
+        if scene.get("start_ms") != 0:
+            continue
+        for caption in scene.get("captions", []):
+            if (isinstance(caption, dict) and isinstance(caption.get("text"), str)
+                    and caption.get("startMs") == 0 and caption.get("endMs", 0) > 0):
+                text = caption["text"]
+                kinds = _canonical_first_frame_ai_kinds(text)
+                if kinds or _looks_like_first_frame_ai_declaration(text):
+                    observations.append({"source": "caption", "text": text, "kinds": kinds})
+    return observations
+
+
+def _declared_first_frame_ai_kinds(video):
+    observations = _caption_first_frame_ai_observations(video)
+    if len(observations) != 1:
+        return frozenset()
+    return observations[0]["kinds"]
+
+
+def _structured_first_frame_ai_kinds(video):
+    if video.get("profile") != "xhs-vertical-1080x1920-v2-voiced":
+        return frozenset()
+    audio = video.get("meta", {}).get("audio", {})
+    if audio.get("origin") != "synthetic_ai" or audio.get("disclosure_text") != "旁白由AI合成":
+        return frozenset()
+    hook = next((
+        scene for scene in video.get("scenes", [])
+        if scene.get("role") == "hook" and scene.get("start_ms") == 0
+    ), None)
+    if hook and "synthetic_audio" in hook.get("persistent_notices", []):
+        return frozenset({"synthetic_audio"})
+    return frozenset()
+
+
+def _first_frame_ai_label_state(video):
+    observations = _caption_first_frame_ai_observations(video)
+    structured = _structured_first_frame_ai_kinds(video)
+    if structured:
+        observations.append({
+            "source": "structured_notice",
+            "text": CANONICAL_FIRST_FRAME_LABELS["synthetic_audio"],
+            "kinds": structured,
+        })
+    declared = frozenset().union(*(item["kinds"] for item in observations)) if observations else frozenset()
+    unique_canonical = len(observations) == 1 and bool(observations[0]["kinds"])
+    return {
+        "observations": observations,
+        "declared_kinds": declared,
+        "unique_canonical": unique_canonical,
+        "conflict": len(observations) > 1,
+    }
+
+
 def _has_matching_first_frame_ai_label(video, kind):
-    return _declared_first_frame_ai_kinds(video) == frozenset({kind})
+    state = _first_frame_ai_label_state(video)
+    return state["unique_canonical"] and state["declared_kinds"] == frozenset({kind})
 
 
-def _ai_disclosure(video, rule, kinds):
+def _ai_disclosure(video, rule, kinds, derived_ai_kinds=()):
     visible = _has_visible_ai_disclosure(video)
     first_frame_required = frozenset(
         kind for kind in kinds if rule["kinds"][kind]["verification"] == "first_frame_ai_label"
     )
-    declared_first_frame = _declared_first_frame_ai_kinds(video)
+    first_frame_state = _first_frame_ai_label_state(video)
+    observations = first_frame_state["observations"]
+    declared_first_frame = first_frame_state["declared_kinds"]
+    if len(observations) == 1:
+        first_frame_declaration_source = observations[0]["source"]
+    elif observations:
+        first_frame_declaration_source = "conflict"
+    else:
+        first_frame_declaration_source = None
     expected_first_frame_labels = list(FIRST_FRAME_LABEL_VARIANTS.get(first_frame_required, ()))
-    first_frame_exact_match = bool(first_frame_required) and declared_first_frame == first_frame_required
+    first_frame_exact_match = (
+        bool(first_frame_required)
+        and first_frame_state["unique_canonical"]
+        and declared_first_frame == first_frame_required
+    )
     obligations, actions, messages = [], [], []
+    if first_frame_required and first_frame_state["conflict"]:
+        messages.append("first-frame AI label conflict: exactly one caption or structured declaration is allowed")
     for kind in kinds:
         selected = rule["kinds"][kind]
         verification, required = selected["verification"], selected["required"]
@@ -745,10 +988,16 @@ def _ai_disclosure(video, rule, kinds):
     combined_required = True if True in required_values else (None if None in required_values else False)
     actual = {
         "declared_kinds": list(kinds),
+        "derived_ai_kinds": list(derived_ai_kinds),
         "platform_disclosure_required": combined_required,
         "determination_pending": None in required_values,
         "visible_ai_assisted_disclosure": visible,
         "first_frame_declared_kinds": [kind for kind in AI_KINDS if kind in declared_first_frame],
+        "first_frame_declaration_source": first_frame_declaration_source,
+        "first_frame_label_count": len(observations),
+        "first_frame_label_sources": list(dict.fromkeys(item["source"] for item in observations)),
+        "first_frame_label_texts": [item["text"] for item in observations],
+        "first_frame_label_conflict": first_frame_state["conflict"],
         "expected_first_frame_labels": expected_first_frame_labels,
         "obligations": obligations,
     }
@@ -766,7 +1015,7 @@ def _overall(checks):
     return "pass"
 
 
-def evaluate_publish_profile(video_ir, catalog, profile_id, ai_content_kinds):
+def evaluate_publish_profile(video_ir, catalog, profile_id, ai_content_kinds, asset_root=None):
     ai_kinds, ai_errors = _normalize_ai_kinds(ai_content_kinds)
     catalog_errors = validate_profile_catalog(catalog)
     if catalog_errors:
@@ -780,25 +1029,60 @@ def evaluate_publish_profile(video_ir, catalog, profile_id, ai_content_kinds):
     ir_errors = [_normalize_ir_error(message) for message in _validate_publish_input(video_ir)]
     if ir_errors:
         return _invalid_report(profile_id, ai_kinds, ir_errors)
+    schema = video_ir["schema"]
+    asset_verification, asset_errors = (
+        _verify_v2_assets(video_ir, asset_root)
+        if schema == VOICEOVER_VIDEO_SCHEMA
+        else ([None] * len(video_ir["videos"]), [])
+    )
+    if asset_errors:
+        return _invalid_report(profile_id, ai_kinds, asset_errors)
+    facts = [
+        _video_facts(schema, video, verification)
+        for video, verification in zip(video_ir["videos"], asset_verification)
+    ]
+    derived_ai_kinds = [
+        kind for kind in AI_KINDS
+        if any(kind in item["derived_ai_kinds"] for item in facts)
+    ]
+    derivation_errors = _derived_ai_kind_errors(schema, video_ir["videos"], ai_kinds, facts)
+    if derivation_errors:
+        return _invalid_report(profile_id, ai_kinds, derivation_errors, derived_ai_kinds)
     profile, videos = catalog["profiles"][profile_id], []
-    for video in video_ir["videos"]:
+    for video, video_facts in zip(video_ir["videos"], facts):
         rules = profile["rules"]
+        effective_ai_kinds = (
+            _effective_ai_kinds(ai_kinds, video_facts["derived_ai_kinds"])
+            if schema == VOICEOVER_VIDEO_SCHEMA
+            else list(ai_kinds)
+        )
         checks = [
             _resolution(video, rules["resolution"]),
             _aspect(video, rules["aspect_ratio"]),
             _fps(video, rules["fps"]),
             _duration(video, rules["duration"]),
-            _audio(video, rules["audio"]),
-            _ai_disclosure(video, rules["ai_disclosure"], ai_kinds),
+            _audio(video, rules["audio"], schema, video_facts),
+            _ai_disclosure(
+                video,
+                rules["ai_disclosure"],
+                effective_ai_kinds,
+                video_facts["derived_ai_kinds"],
+            ),
             _preview(rules["platform_preview"]),
         ]
-        videos.append({"video_id": video["video_id"], "note_id": video["note_id"], "overall_status": _overall(checks), "checks": checks})
+        videos.append({
+            "video_id": video["video_id"], "note_id": video["note_id"],
+            "derived_ai_kinds": video_facts["derived_ai_kinds"],
+            "effective_ai_kinds": effective_ai_kinds,
+            "overall_status": _overall(checks), "checks": checks,
+        })
     statuses = [video["overall_status"] for video in videos]
     overall = "blocked" if "blocked" in statuses else ("needs_review" if "needs_review" in statuses else "pass")
     return {
         "schema": REPORT_SCHEMA,
         "profile_id": profile_id,
         "ai_content_kinds": ai_kinds,
+        "derived_ai_kinds": derived_ai_kinds,
         "applicability": profile["applicability"],
         "publication_mode": profile["publication_mode"],
         "overall_status": overall,
@@ -853,7 +1137,13 @@ def main():
         report = _invalid_report(args.profile, ai_kinds, [_error("JSON_PARSE", "$", str(exc))])
         _write_report(report, args.output)
         raise SystemExit(2)
-    report = evaluate_publish_profile(video_ir, catalog, args.profile, args.ai_content_kinds)
+    report = evaluate_publish_profile(
+        video_ir,
+        catalog,
+        args.profile,
+        args.ai_content_kinds,
+        asset_root=args.video_ir.parent,
+    )
     _write_report(report, args.output)
     if report["errors"]:
         raise SystemExit(2)

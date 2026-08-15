@@ -160,15 +160,15 @@
           "captions": [
             {
               "confidence": null,
-              "endMs": 5263,
+              "endMs": 5200,
               "startMs": 3200,
               "text": "页面显示 12 条 · 实际采集 9 条，",
               "timestampMs": null
             },
             {
               "confidence": null,
-              "endMs": 7263,
-              "startMs": 5263,
+              "endMs": 7200,
+              "startMs": 5200,
               "text": "评论未完整采集；热度不等于事实。",
               "timestampMs": null
             }

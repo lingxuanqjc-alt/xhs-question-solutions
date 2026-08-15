@@ -1,5 +1,5 @@
 import React from "react";
-import {AbsoluteFill, Sequence} from "remotion";
+import {AbsoluteFill, Html5Audio, Sequence, staticFile} from "remotion";
 import {ActionScene} from "./scenes/ActionScene";
 import {DisclosureScene, CtaScene} from "./scenes/DisclosureScenes";
 import {EvidenceScene} from "./scenes/EvidenceScene";
@@ -24,10 +24,11 @@ export const XhsQuestionVideo = ({video}) => (
     {video.scenes.map((scene) => {
       const Component = COMPONENTS[scene.role];
       if (!Component) throw new Error(`UNSUPPORTED_VIDEO_ROLE(${scene.role})`);
-      const from = Math.round(scene.start_ms * video.fps / 1000);
-      const durationInFrames = Math.round((scene.end_ms - scene.start_ms) * video.fps / 1000);
-      return <Sequence key={scene.scene_id} from={from} durationInFrames={durationInFrames} name={scene.scene_id}>
+      const from = scene.start_frame ?? Math.round(scene.start_ms * video.fps / 1000);
+      const durationInFrames = scene.end_frame !== undefined ? scene.end_frame - scene.start_frame : Math.round((scene.end_ms - scene.start_ms) * video.fps / 1000);
+      return <Sequence key={scene.scene_id} from={from} durationInFrames={durationInFrames} premountFor={video.fps} name={scene.scene_id}>
         <Component scene={scene} video={video} />
+        {scene.audio?.kind === "external_voiceover_clip" ? <Html5Audio src={staticFile(scene.audio.path)} /> : null}
       </Sequence>;
     })}
   </AbsoluteFill>

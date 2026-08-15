@@ -37,7 +37,7 @@
         "aspect_ratio": {"knowledge": "unknown", "enforcement": "manual", "allowed_exact": [], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["xhs_creator_portal"], "manual_check": "在小红书发布预览中核对 9:16 画面、封面裁切和 UI 遮挡。"},
         "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["xhs_creator_portal"], "manual_check": "在实际上传页核对帧率兼容性；公开官方入口未提供稳定数值。"},
         "duration": {"knowledge": "unknown", "enforcement": "manual", "min_ms": null, "max_ms": null, "min_inclusive": null, "max_inclusive": null, "source_ids": ["xhs_creator_portal"], "manual_check": "在当前账号发布页核对视频时长权限；不使用非官方经验值代替。"},
-        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["xhs_creator_portal"], "manual_check": "当前 IR 为静音；发布前确认是否补录人声、音乐授权与响度。"},
+        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["xhs_creator_portal"], "manual_check": "发布前人工试听最终上传文件，并复核响度与所有声音的使用权；基础信号检查和用户声明不等于工具核验。"},
         "ai_disclosure": {"knowledge": "mixed", "source_ids": ["xhs_creator_portal", "cac_ai_labels"], "manual_check": "国家标识义务可执行；小红书端内入口仍需在发布页核对。", "kinds": {
           "none": {"required": false, "verification": "not_required", "action": "无 AI 生成合成内容时不增加 AI 标签。", "basis": "未使用 AI 生成合成内容。"},
           "assistive_text_only": {"required": null, "verification": "manual", "action": "核对平台当前 AI 标识规则，并保留片内 AI 辅助整理披露。", "basis": "公开官方入口未给出可机器执行的细分规则。"},
@@ -92,7 +92,7 @@
         "aspect_ratio": {"knowledge": "unknown", "enforcement": "manual", "allowed_exact": [], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["douyin_publish_solution"], "manual_check": "官方页面的比例与竖版文字冲突，需以实际上传预览为准。"},
         "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["douyin_publish_solution"], "manual_check": "该官方页面未给出帧率数值，发布前核对。"},
         "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 900000, "min_inclusive": null, "max_inclusive": true, "source_ids": ["douyin_publish_duration"], "manual_check": null},
-        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["douyin_publish_solution"], "manual_check": "该官方页面未给出静音或音轨要求；发布前确认人声、音乐授权和响度。"},
+        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["douyin_publish_solution"], "manual_check": "该官方页面未给出静音或音轨要求；发布前人工试听最终上传文件，并复核响度及声音使用权。"},
         "ai_disclosure": {"knowledge": "mixed", "source_ids": ["douyin_user_agreement", "cac_ai_labels"], "manual_check": "首帧标识可前检；抖音端内声明入口仍需人工完成。", "kinds": {
           "none": {"required": false, "verification": "not_required", "action": "无 AI 生成合成内容时不增加 AI 标签。", "basis": "未使用 AI 生成合成内容。"},
           "assistive_text_only": {"required": null, "verification": "manual", "action": "核对平台当前 AI 标识规则。", "basis": "发布接口文档没有 AI 披露细分。"},
@@ -139,7 +139,7 @@
         "aspect_ratio": {"knowledge": "unknown", "enforcement": "manual", "allowed_exact": [], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["tiktok_studio_no_public_values"], "manual_check": "官方 Studio 上传页面没有给出可执行比例边界；在平台预览核对 9:16。"},
         "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["tiktok_studio_no_public_values"], "manual_check": "官方 Studio 上传页面未给出帧率边界。"},
         "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 1800000, "min_inclusive": null, "max_inclusive": true, "source_ids": ["tiktok_studio_upload"], "manual_check": null},
-        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["tiktok_studio_no_public_values"], "manual_check": "静音技术上未在该页面被禁止，但仍需确定声音、字幕与版权策略。"},
+        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["tiktok_studio_no_public_values"], "manual_check": "静音技术上未在该页面被禁止；发布前仍需人工试听并复核声音、字幕与版权策略。"},
         "ai_disclosure": {"knowledge": "mixed", "source_ids": ["tiktok_aigc"], "manual_check": "合成视觉或音频是否逼真需人工判断。", "kinds": {
           "none": {"required": false, "verification": "not_required", "action": "无需开启 AIGC 标签。", "basis": "未使用 AI 生成或重大修改的媒体。"},
           "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因脚本文字辅助开启 AIGC 标签；保留真实的数据范围披露。", "basis": "TikTok 的 AIGC 定义面向 AI 生成或修改的图像、视频和音频。"},
@@ -186,7 +186,7 @@
         "aspect_ratio": {"knowledge": "known", "enforcement": "hard", "allowed_exact": ["9:16"], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["tiktok_reservation_infeed"], "manual_check": "本 profile 只验证官方竖版规格；仍需在 Ads Manager 预览安全区。"},
         "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["tiktok_reservation_no_public_fps"], "manual_check": "该官方规格页未给出帧率边界。"},
         "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": 5000, "max_ms": 60000, "min_inclusive": true, "max_inclusive": true, "source_ids": ["tiktok_reservation_infeed"], "manual_check": null},
-        "audio": {"knowledge": "known", "enforcement": "hard", "allowed_kinds": [], "required": true, "source_ids": ["tiktok_reservation_infeed"], "manual_check": "官方要求广告素材包含声音；当前 xhs-video/v1 仅支持 audio.kind=none，因此本项目会短期阻断，直至实际音轨与版权证据可验证。"},
+        "audio": {"knowledge": "known", "enforcement": "hard", "allowed_kinds": [], "required": true, "source_ids": ["tiktok_reservation_infeed"], "manual_check": "官方要求广告素材包含声音；v1 静音素材会阻断，v2 仍须人工试听最终编码文件并复核声音使用权。"},
         "ai_disclosure": {"knowledge": "mixed", "source_ids": ["tiktok_aigc"], "manual_check": "广告政策与地区规则还需在 Ads Manager 复核。", "kinds": {
           "none": {"required": false, "verification": "not_required", "action": "无需开启 AIGC 标签。", "basis": "未使用 AI 生成或重大修改的媒体。"},
           "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因脚本文字辅助开启 AIGC 标签。", "basis": "TikTok 的 AIGC 定义面向 AI 生成或修改的图像、视频和音频。"},
@@ -233,7 +233,7 @@
         "aspect_ratio": {"knowledge": "known", "enforcement": "hard", "allowed_exact": [], "allowed_orientations": ["portrait", "square"], "min_ratio": null, "max_ratio": null, "source_ids": ["youtube_three_minute_shorts"], "manual_check": null},
         "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["youtube_shorts_no_public_values"], "manual_check": "该 Shorts 资格页未给出帧率数值。"},
         "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 180000, "min_inclusive": null, "max_inclusive": true, "source_ids": ["youtube_three_minute_shorts"], "manual_check": null},
-        "audio": {"knowledge": "mixed", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["youtube_three_minute_shorts"], "manual_check": "超过 1 分钟的 Short 如有有效 Content ID claim 会被全球阻断；当前静音输出需确认最终音频与版权策略。"},
+        "audio": {"knowledge": "mixed", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["youtube_three_minute_shorts"], "manual_check": "超过 1 分钟的 Short 如有有效 Content ID claim 会被全球阻断；发布前确认最终音频与版权策略。"},
         "ai_disclosure": {"knowledge": "mixed", "source_ids": ["youtube_altered_content"], "manual_check": "合成视觉或音频是否逼真、重大需人工判断。", "kinds": {
           "none": {"required": false, "verification": "not_required", "action": "无需选择 altered content。", "basis": "未使用 AI 生成或重大修改的媒体。"},
           "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因脚本、标题、缩略图、信息图或字幕辅助选择 altered content。", "basis": "YouTube 明确把这些 production assistance 列为无需创作者披露的例子。"},
@@ -288,7 +288,7 @@
         "aspect_ratio": {"knowledge": "known", "enforcement": "hard", "allowed_exact": [], "allowed_orientations": [], "min_ratio": "9:16", "max_ratio": "191:100", "source_ids": ["instagram_reel_specs"], "manual_check": null},
         "fps": {"knowledge": "known", "enforcement": "hard", "exact": null, "min": 30, "max": null, "source_ids": ["instagram_reel_specs"], "manual_check": null},
         "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 1200000, "min_inclusive": null, "max_inclusive": true, "source_ids": ["instagram_reel_length"], "manual_check": "超过 3 分钟不会推荐给新受众；本检查把它作为人工分发判断而非上传阻断。"},
-        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["instagram_reel_audio_no_public_value"], "manual_check": "当前静音输出需在发布前确认原声、音乐授权和静音观看策略。"},
+        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["instagram_reel_audio_no_public_value"], "manual_check": "发布前人工试听并确认原声、音乐授权和静音观看策略。"},
         "ai_disclosure": {"knowledge": "mixed", "source_ids": ["meta_ai_labels"], "manual_check": "合成媒体是否触发 AI info 需按实际素材和元数据核对。", "kinds": {
           "none": {"required": false, "verification": "not_required", "action": "无需使用 AI 内容披露工具。", "basis": "未使用 AI 生成或重大修改的媒体。"},
           "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因文字整理把视频误报成合成媒体；片内仍保留 AI 辅助透明披露。", "basis": "Meta 的媒体标签规则针对生成或修改的图像、视频和音频。"},
@@ -343,7 +343,7 @@
         "aspect_ratio": {"knowledge": "known", "enforcement": "hard", "allowed_exact": ["9:16"], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["instagram_boost_requirements"], "manual_check": null},
         "fps": {"knowledge": "known", "enforcement": "hard", "exact": null, "min": 30, "max": null, "source_ids": ["instagram_reel_specs"], "manual_check": null},
         "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 90000, "min_inclusive": null, "max_inclusive": false, "source_ids": ["instagram_boost_requirements"], "manual_check": null},
-        "audio": {"knowledge": "known", "enforcement": "project_gate", "allowed_kinds": ["original", "royalty_free"], "required": true, "source_ids": ["instagram_boost_requirements", "instagram_facebook_boost_sound"], "manual_check": "官方将声音列为更适配 Reels placement 的建议并禁止受版权保护音乐；本项目把明确的原声或免版税声音策略设为付费投放交付门槛，而不是声称平台技术上禁止静音。当前 xhs-video/v1 仅支持 audio.kind=none，因此本版本有意阻断。"},
+        "audio": {"knowledge": "known", "enforcement": "project_gate", "allowed_kinds": ["original", "royalty_free"], "required": true, "source_ids": ["instagram_boost_requirements", "instagram_facebook_boost_sound"], "manual_check": "官方将声音列为更适配 Reels placement 的建议并禁止受版权保护音乐；本项目把明确的原声或免版税声音策略设为付费投放交付门槛。v1 静音素材会阻断；v2 的基础信号与用户权利声明仍需人工试听和权利复核。"},
         "ai_disclosure": {"knowledge": "mixed", "source_ids": ["meta_ai_ads"], "manual_check": "广告 AI 标签会因生成程度、工具和地区变化，需在账户中确认。", "kinds": {
           "none": {"required": false, "verification": "not_required", "action": "无需使用 AI 内容披露工具。", "basis": "未使用 AI 生成或重大修改的媒体。"},
           "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因脚本文字辅助把素材误报成生成式媒体。", "basis": "Meta 广告标签面向由生成式创意工具创建或显著编辑的图像和视频。"},
