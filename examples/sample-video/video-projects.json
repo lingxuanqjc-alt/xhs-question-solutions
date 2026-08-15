@@ -126,9 +126,16 @@
           "captions": [
             {
               "confidence": null,
-              "endMs": 1450,
-              "startMs": 200,
+              "endMs": 1300,
+              "startMs": 100,
               "text": "衣柜后墙面反复发霉？",
+              "timestampMs": null
+            },
+            {
+              "confidence": null,
+              "endMs": 2750,
+              "startMs": 1300,
+              "text": "处理根因后再除霉，继续看3步。",
               "timestampMs": null
             }
           ],
@@ -140,7 +147,7 @@
           "end_ms": 3000,
           "evidence_comment_ids": [],
           "index": 1,
-          "narration": "衣柜后墙面反复发霉？",
+          "narration": "衣柜后墙面反复发霉？处理根因后再除霉，继续看3步。",
           "persistent_notices": [
             "synthetic_demo",
             "high_risk_needs_review"
@@ -153,23 +160,16 @@
           "captions": [
             {
               "confidence": null,
-              "endMs": 5263,
+              "endMs": 5200,
               "startMs": 3200,
               "text": "页面显示 12 条 · 实际采集 9 条，",
               "timestampMs": null
             },
             {
               "confidence": null,
-              "endMs": 6463,
-              "startMs": 5263,
-              "text": "评论未完整采集；",
-              "timestampMs": null
-            },
-            {
-              "confidence": null,
-              "endMs": 7663,
-              "startMs": 6463,
-              "text": "热度不等于事实。",
+              "endMs": 7200,
+              "startMs": 5200,
+              "text": "评论未完整采集；热度不等于事实。",
               "timestampMs": null
             }
           ],
@@ -297,22 +297,15 @@
           "captions": [
             {
               "confidence": null,
-              "endMs": 27400,
+              "endMs": 27763,
               "startMs": 26200,
-              "text": "第3步：",
+              "text": "第3步：根因处理后再除霉，",
               "timestampMs": null
             },
             {
               "confidence": null,
-              "endMs": 28600,
-              "startMs": 27400,
-              "text": "根因处理后再除霉，",
-              "timestampMs": null
-            },
-            {
-              "confidence": null,
-              "endMs": 30475,
-              "startMs": 28600,
+              "endMs": 29638,
+              "startMs": 27763,
               "text": "记录位置和日期并观察是否复发。",
               "timestampMs": null
             }
@@ -345,30 +338,16 @@
           "captions": [
             {
               "confidence": null,
-              "endMs": 36450,
-              "startMs": 35200,
-              "text": "左边是一条亲历个案，",
-              "timestampMs": null
-            },
-            {
-              "confidence": null,
               "endMs": 37700,
-              "startMs": 36450,
-              "text": "右边是一条失败反例。",
+              "startMs": 35200,
+              "text": "左边是一条亲历个案，右边是一条失败反例。",
               "timestampMs": null
             },
             {
               "confidence": null,
-              "endMs": 38900,
+              "endMs": 39700,
               "startMs": 37700,
-              "text": "它们只提示方向，",
-              "timestampMs": null
-            },
-            {
-              "confidence": null,
-              "endMs": 40100,
-              "startMs": 38900,
-              "text": "不证明普遍结果。",
+              "text": "它们只提示方向，不证明普遍结果。",
               "timestampMs": null
             }
           ],
@@ -415,16 +394,9 @@
             },
             {
               "confidence": null,
-              "endMs": 50275,
+              "endMs": 51575,
               "startMs": 49075,
-              "text": "不能按点赞裁决。",
-              "timestampMs": null
-            },
-            {
-              "confidence": null,
-              "endMs": 51775,
-              "startMs": 50275,
-              "text": "高风险内容仍需权威复核。",
+              "text": "不能按点赞裁决。高风险内容仍需权威复核。",
               "timestampMs": null
             }
           ],
@@ -470,30 +442,16 @@
           "captions": [
             {
               "confidence": null,
-              "endMs": 57400,
+              "endMs": 58700,
               "startMs": 56200,
-              "text": "风险等级是高，",
+              "text": "风险等级是高，发布状态为需要人工复核。还",
               "timestampMs": null
             },
             {
               "confidence": null,
-              "endMs": 58900,
-              "startMs": 57400,
-              "text": "发布状态为需要人工复核。",
-              "timestampMs": null
-            },
-            {
-              "confidence": null,
-              "endMs": 61275,
-              "startMs": 58900,
-              "text": "还需确认现场条件、停止边界以及遗漏的反",
-              "timestampMs": null
-            },
-            {
-              "confidence": null,
-              "endMs": 62475,
-              "startMs": 61275,
-              "text": "例。",
+              "endMs": 61200,
+              "startMs": 58700,
+              "text": "需确认现场条件、停止边界以及遗漏的反例。",
               "timestampMs": null
             }
           ],
@@ -543,16 +501,9 @@
             },
             {
               "confidence": null,
-              "endMs": 69025,
+              "endMs": 69700,
               "startMs": 67825,
-              "text": "利益关系未知，",
-              "timestampMs": null
-            },
-            {
-              "confidence": null,
-              "endMs": 70225,
-              "startMs": 69025,
-              "text": "发布前人工复核。",
+              "text": "利益关系未知，发布前人工复核。",
               "timestampMs": null
             }
           ],
@@ -598,7 +549,7 @@
           ],
           "content": {
             "question": "霉斑面积、墙体含水情况和实际水分来源，你目前能确认哪一项？",
-            "stop_message": "出现健康不适或结构、管线问题时，停止自行处理并寻求专业帮助"
+            "stop_message": "若存在火源、通风不足或敏感人群，请停止自行处理并寻求合适的专业帮助。"
           },
           "end_ms": 75000,
           "evidence_comment_ids": [],

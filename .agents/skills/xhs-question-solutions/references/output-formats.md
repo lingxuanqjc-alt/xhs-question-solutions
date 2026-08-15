@@ -6,7 +6,7 @@
 
 - `report`：默认。用于决策、复盘和继续追问，保留完整主张账本、冲突与证据索引。
 - `xhs-cards`：用于小红书、Instagram 图文轮播、微信公众号卡片等扫读场景。可输出 Markdown 文案、版本化卡片 IR、自包含 HTML 和可选 PNG；不直接声称已发布。
-- `short-video`：用于小红书视频、抖音、TikTok、Reels 与 Shorts。输出 60–90 秒分镜、口播、字幕和 `xhs-video/v1` IR，可选渲染无声 MP4。
+- `short-video`：用于小红书视频、抖音、TikTok、Reels 与 Shorts。输出 60–90 秒分镜、口播、字幕和静音 `xhs-video/v1` IR；可选渲染无声 MP4，或导入用户提供的逐场 WAV 构建有声 `xhs-video/v2`。
 
 ## 共同结构
 
@@ -61,11 +61,62 @@ npm run video:studio -- --props <output-dir>/<note-id>.props.json
 
 固定配置为 1080×1920、30 fps、60–90 秒、H.264、`audio.kind=none`。场景顺序为钩子、范围、每步一个动作、证据、冲突与风险、未知项、披露和安全 CTA；1–5 个步骤分别映射到确定时长，不把多个动作挤进同一场景。字幕只压缩表达，不得删除使结论成立的适用条件。
 
+前三秒钩子优先同时给出 `social_title`、从完整 `summary` 中按语义边界确定性选取的连续短句，以及“继续看 N 步”的观看路径；完整标题与 `summary` 始终保留在 IR 和画面。若标题或安全完整短句无法满足三秒字幕密度，只口播“问题—证据—行动—继续看 N 步”的确定性路径，不截断否定或危险边界，也不编造摘要。CTA 只复制 analysis 语义选择的 `primary_stop_condition`；该字段必须逐字来自某个步骤的 `stop_conditions`，两侧均不得有空白。字段缺失时保留全部停止条件；完整停止文案超过 60 个显示单位时，构建阶段以 `CTA_STOP_CONDITIONS_TOO_LONG` 显式失败，不按关键词排序，也不把溢出推迟到浏览器检测。
+
 引用 `unsafe_advice` 的每个场景必须就地持续显示“未核验高风险观点，不是操作建议”，口播前置同义警告，首条字幕也必须包含警示。短视频描述区再次放数据范围和高风险提示。
 
-当前实现不生成 TTS、配音或音轨；口播字段仅供脚本、字幕和后续人工录音使用。Studio 命令载入构建器生成的 `.props.json`，启动不自动打开浏览器的本地预览服务，不代表已导出或发布。
+v1 不生成 TTS、配音或音轨；口播字段用于脚本、字幕和后续录音。Studio 命令载入构建器生成的 `.props.json`，启动不自动打开浏览器的本地预览服务，不代表已导出或发布。
 
 MP4 渲染仅复用显式 `--browser`、`REMOTION_BROWSER_EXECUTABLE`、`PLAYWRIGHT_CHROMIUM_EXECUTABLE` 或本机已知位置的 Chromium/Edge/Chrome，不自动下载。成品先写入同级临时文件，通过容器与元数据校验后才替换目标；失败必须保留旧 MP4。Remotion 的使用受其[特殊许可](https://www.remotion.dev/docs/license)约束。
+
+### 外部 WAV 与 `xhs-video/v2`
+
+v2 是 v1 的受约束有声派生物，不是音频生成器。项目不包含 TTS、不调用任何语音 API，也不读取 API Key。先初始化清单：
+
+```text
+python scripts/import_voiceover.py init <v1-video-projects.json> <voiceover-manifest.json>
+```
+
+用户逐场提供 RIFF PCM s16le、48 kHz、单声道、16-bit WAV，填写相对路径和每条 cue 的采样起止点，并选择来源与权利基础：
+
+- `human_recorded`：`self_recorded` 或 `licensed`
+- `synthetic_ai`：`synthetic_service_terms_confirmed` 或 `licensed`
+
+逐段听审并确认所声明的使用权后才能构建：
+
+```text
+python scripts/import_voiceover.py build <v1-video-projects.json> <voiceover-manifest.json> <v2-output-dir> --confirm-audio-reviewed --confirm-audio-rights
+python scripts/render_video.py --project-dir <v2-output-dir> --mp4 --browser <chrome-or-edge-path>
+```
+
+两个参数分别记录“用户已听审”和“用户已确认权利”，不得由 Agent 代填。工具会校验格式、完整文件、哈希、字幕文本、cue 时间、阅读速度与基础 PCM 活动，但不会验证语义、听感、自然度、同步质量或许可证；因此 IR 明确保留 `audibility_verified=false` 和 `license_verified_by_tool=false`。不要把测试中用于媒体探测的非零音调描述为真实配音或可发布音频。
+
+合成旁白在 hook 与 disclosure 场景带结构化 notice，首帧只显示一条“旁白由AI合成”；hook 字幕不得再出现肯定、否定或疑问式的 AI 音频声明。v2 时间轴由 WAV 样本数决定，成片仍为 1080×1920、30 fps、60–90 秒；媒体探测必须确认 H.264 与单条 AAC 48 kHz 单声道音轨。
+
+清单构建使用同级输出锁和暂存目录，全部成功后整体替换，失败保留上一套目录。`--project-dir` 必须配合 `--mp4`，且不能再传 canonical、analysis 或 output_dir 位置参数；它重新校验 `video-projects.json` 与音频资产，并要求每个视频恰好对应一个位于项目根目录、内容完全一致的 `*.props.json`。输出使用 props 的同名 stem 加 `.mp4`。批处理先取得全部目标锁、生成并探测全部暂存文件，再替换旧文件；任一项失败都保留旧成片。成功摘要写入项目目录的 `mp4-render-summary.json`；锁或备份清理失败必须出具 warning，不得隐藏。
+
+`--frame-range START:END` 仅供诊断和 CI 使用；它输出独立的 `.frames-START-END.mp4` 与 `mp4-render-summary.frames-START-END.json`，不会覆盖完整版，也不能作为完整成片发布。
+
+## 平台发布前检
+
+`xhs-video/v1` 或 `xhs-video/v2` 只证明项目自身通过对应结构门禁，不代表任一社交平台已经接受素材。发布或投放前，选择一个有适用范围和核对日期的平台 profile，生成确定性的 `xhs-publish-check/v1`：
+
+```text
+python scripts/check_publish_profile.py <video.json> --profile youtube_shorts --ai-content-kind assistive_text_only --output <publish-check.json>
+python scripts/check_publish_profile.py <video.json> --profile youtube_shorts --ai-content-kind synthetic_visual,synthetic_audio --output <publish-check.json>
+```
+
+内置 profile：`xhs_cn`、`douyin_cn`、`tiktok_organic`、`tiktok_ads`、`youtube_shorts`、`instagram_reels`、`instagram_boost`、`cross_platform_master_60`。规则及官方来源保存在 `references/platform-profiles.json`；profile 的适用范围必须与实际发布入口一致。`tiktok_ads` 只代表 Reservation In-Feed Non-Spark/Push 的竖版 9:16 素材，不代表 Spark Pull、Auction Ads 或自然发布。`cross_platform_master_60` 只验证项目母版策略，不证明任何平台已接受素材。
+
+前检按分辨率、比例、帧率、时长、音频策略、AI 披露和平台预览分别给出 `pass`、`needs_review` 或 `blocked`。公开官方来源没有稳定数值时保存 `null`/`unknown` 并产生人工核对项，不使用第三方经验值补空。官方硬限制、官方建议和项目交付门槛分别记录；例如 Instagram Boost 的 `<90 秒`是官方资格边界，而“付费素材需有明确的原声或免版税声音策略”是本项目交付门槛，不声称平台技术上禁止静音。
+
+AI 内容类型集合包括 `none`、`assistive_text_only`、`synthetic_visual`、`synthetic_audio`、`realistic_altered`。调用方必须如实声明画面或修改类型；v2 的 `synthetic_ai` 来源会自动补入 `synthetic_audio`。参数可以重复，也可以用逗号传入；合成画面与合成音频可同时选择并取义务并集。`none` 不得与其他类型组合，`assistive_text_only` 不得与三个合成媒体类型组合。仅使用 AI 辅助脚本、标题或字幕时，不得误选为 YouTube 的逼真修改内容。
+
+中国平台首帧标识采用失败关闭的有限文案。单类分别为“画面由AI生成”（另允许“非真人实拍，画面由AI生成”）、“旁白由AI合成”、“画面经AI修改”；组合类分别为“画面由AI生成，旁白由AI合成”、“画面由AI生成并经AI修改”、“画面经AI修改，旁白由AI合成”、“画面由AI生成并经AI修改，旁白由AI合成”。首帧只能有一条从 0 ms 开始的完整标签字幕，解析出的声明 kind 集合必须与当前 required kinds 完全相等；少报和多报均阻断。两条并列标签、自由文本、疑问句、否定句、反标识或跨媒介标签也不能通过自动门禁。
+
+`needs_review` 表示结构化报告已生成但发布条件尚未闭环，CLI 默认返回 3；只有明确用于收集报告时才可加 `--allow-needs-review` 令其返回 0。`blocked` 返回 1，输入、profile、非标准 JSON 数值或未知字段错误返回 2。所有错误都带 `code` 和 JSON `path`，未知字段默认拒绝。Windows 标准输出固定为 UTF-8。
+
+`xhs-video/v1` 只接受 `audio.kind=none`，因此 TikTok Reservation 广告的官方有声硬要求和 Instagram Boost 的项目有声门槛会阻断。`xhs-video/v2` 可证明声明的 WAV 资产在技术上存在并可渲染为 AAC 48 kHz 单声道；synthetic 来源会自动推导 `synthetic_audio`，与命令行显式声明的其他合成媒体类型取并集。但 `audibility_verified=false` 与 `license_verified_by_tool=false` 必须继续产生人工复核，不能因为用户打了确认开关就冒充工具验证。
 
 ## 90 分发布自检
 

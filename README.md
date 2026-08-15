@@ -44,7 +44,7 @@ Claude Code：
 - [实际渲染的 1080×1440 卡片（10 张主卡 + 3 张证据附录）](examples/sample-cards/demo-mold-001-21e64ed3/)
 - [短视频分镜](examples/sample-short-video.md)
 - [可复现的视频 IR、Remotion props 与 1080×1920 预览帧](examples/sample-video/)
-- [75 秒无声 H.264 演示成片（v0.4.0 Release）](https://github.com/lingxuanqjc-alt/xhs-question-solutions/releases/download/v0.4.0/xhs-question-solutions-v0.4.0-demo.mp4)
+- [75 秒静音 H.264 演示成片（v0.5.0 Release；v1，无配音）](https://github.com/lingxuanqjc-alt/xhs-question-solutions/releases/download/v0.5.0/xhs-question-solutions-v0.5.0-demo-silent.mp4)
 
 ## 三层可信链路
 
@@ -75,7 +75,7 @@ flowchart LR
 
 - `report`：一句话答案、3–5 步方案、主张账本、冲突、未知项和完整证据索引。
 - `xhs-cards`：通常 8–12 张图文卡片；每个方案步骤独占一张，完整证据放独立附录。可生成 Markdown、结构化 IR、自包含 HTML 和可选 PNG。
-- `short-video`：从同一证据源确定性生成 60–90 秒分镜、口播、字幕和 `xhs-video/v1` IR；可选渲染 1080×1920、30 fps 的无声 H.264 MP4。
+- `short-video`：从同一证据源确定性生成 60–90 秒分镜、口播、字幕和静音 `xhs-video/v1` IR；可选渲染无声 MP4，或导入用户已听审且已确认使用权的逐场 WAV，构建有声 `xhs-video/v2`。
 
 标题、封面和节奏可以针对平台调整，但所有格式共享同一个已校验的 `analysis.json`，不会为了传播效果修改证据结论。
 
@@ -137,7 +137,47 @@ python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_video.py bui
 npm --prefix .agents/skills/xhs-question-solutions run video:studio -- --props "<absolute-path-to-props.json>"
 ```
 
-第一条生成 `xhs-video/v1` 项目、Markdown 分镜和各视频 `.props.json`；`--mp4` 才调用 Remotion。浏览器可由 `--browser`、`REMOTION_BROWSER_EXECUTABLE` 指定，或复用系统中已知位置的 Chromium、Edge、Chrome；脚本不会下载浏览器。输出固定为 1080×1920、30 fps、60–90 秒、H.264 无声视频。Studio 以 `--no-open` 启动并打印本地地址；将占位符替换为生成的 props 绝对路径，它只用于预览，不会发布内容。当前管线没有 TTS 或配音合成，`audio.kind=none`，口播文本仅作为脚本和字幕来源。MP4 通过临时文件完成渲染与校验后才替换目标；失败时旧 MP4 保持不变。
+第一条生成静音 `xhs-video/v1` 项目、Markdown 分镜和各视频 `.props.json`；`--mp4` 才调用 Remotion。浏览器可由 `--browser`、`REMOTION_BROWSER_EXECUTABLE` 指定，或复用系统中已知位置的 Chromium、Edge、Chrome；脚本不会下载浏览器。v1 输出固定为 1080×1920、30 fps、60–90 秒、H.264 无音轨。Studio 以 `--no-open` 启动并打印本地地址；将占位符替换为生成的 props 绝对路径，它只用于预览，不会发布内容。v1 MP4 批量渲染先写临时文件，全部通过媒体校验后才替换目标；失败时旧 MP4 保持不变。
+
+### 导入外部配音：`xhs-video/v2`
+
+项目没有内置 TTS、配音服务或 API Key 读取。v2 只接受用户提供的逐场 WAV。先从已生成的 v1 IR 初始化清单：
+
+```powershell
+python -X utf8 .agents/skills/xhs-question-solutions/scripts/import_voiceover.py init build/video/video-projects.json build/voiceover-manifest.json
+```
+
+按清单中的 `narration` 录制或合规生成每场音频，再填写每个视频的 `origin`、`rights_basis`，以及每条 cue 的 `start_sample`、`end_sample`。WAV 必须是 RIFF PCM s16le、48 kHz、单声道、16-bit；文件路径相对于清单所在目录。允许的声明组合：
+
+- `human_recorded`：`self_recorded` 或 `licensed`
+- `synthetic_ai`：`synthetic_service_terms_confirmed` 或 `licensed`
+
+逐段听审并确认声明的使用权后再构建：
+
+```powershell
+python -X utf8 .agents/skills/xhs-question-solutions/scripts/import_voiceover.py build build/video/video-projects.json build/voiceover-manifest.json build/voiced --confirm-audio-reviewed --confirm-audio-rights
+```
+
+两个开关是两项独立的用户声明，Agent 不得自动添加。构建器只做格式、哈希、时间轴、字幕速度和基础 PCM 活动检查；`audibility_verified=false`、`license_verified_by_tool=false` 会被保留，不能解读为工具已经听懂音频或验证许可证。合成旁白会在首帧和披露场景显示“旁白由AI合成”。构建先在同级暂存目录完成并持有输出锁，成功后整体替换；失败保留上一套完整输出。
+
+可用生成的 v2 props 启动 Studio 预览，或用现有项目模式事务式渲染整个目录。该模式会重新校验 `video-projects.json` 和音频资产，要求每个视频在项目根目录恰好有一份内容完全一致的 `*.props.json`，并在替换旧成片前核对 H.264 视频与一条 AAC 48 kHz 单声道音轨：
+
+```powershell
+npm --prefix .agents/skills/xhs-question-solutions run video:studio -- --props "<absolute-path-to-build/voiced/video-001.props.json>"
+python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_video.py --project-dir build/voiced --mp4 --browser "C:\Program Files\Google\Chrome\Application\chrome.exe"
+```
+
+`--project-dir` 不能与 canonical、analysis 或 output_dir 位置参数同时使用，而且必须配合 `--mp4`。批次内任一视频失败时旧 MP4 保持不变；成功摘要写入项目目录的 `mp4-render-summary.json`。命令不会自动发布。测试中生成的非零音调只用于验证音轨管线，不是真实配音，也不是发布素材。
+
+### 平台发布前检
+
+对 v1 或 v2 选择一个目标入口运行检查：
+
+```powershell
+python -X utf8 .agents/skills/xhs-question-solutions/scripts/check_publish_profile.py build/voiced/video-projects.json --profile xhs_cn --output build/xhs-publish-check.json
+```
+
+结果是 `pass`、`needs_review` 或 `blocked`。`needs_review` 默认退出码 3，说明结构化报告已生成但人工听审、版权、账号预览或未知平台条件尚未闭环；只有收集报告时才使用 `--allow-needs-review`，它不会把状态变成 `pass`。`blocked` 返回 1，输入/profile 错误返回 2。v2 会从音频来源推导 `synthetic_audio`；如同时声明其他合成媒体类型，可再显式传入 `--ai-content-kind`。平台检查仍保留 `audibility_verified=false` 与 `license_verified_by_tool=false` 的人工项。
 
 ## 隐私、真实性与安全边界
 

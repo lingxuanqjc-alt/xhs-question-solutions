@@ -1,11 +1,15 @@
 import React from "react";
 import {interpolate, spring, useCurrentFrame, useVideoConfig} from "remotion";
+const REVEAL_OPACITY_FLOOR = 0.55;
 
 export const Reveal = ({delay = 0, children, className = ""}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const value = spring({frame: frame - delay, fps, config: {damping: 20, stiffness: 110, mass: 0.65}});
-  const opacity = interpolate(value, [0, 1], [0, 1]);
+  const opacity = interpolate(value, [0, 1], [REVEAL_OPACITY_FLOOR, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
   return <div className={className} style={{opacity, transform: `translateY(${(1 - value) * 28}px)`}}>{children}</div>;
 };
 

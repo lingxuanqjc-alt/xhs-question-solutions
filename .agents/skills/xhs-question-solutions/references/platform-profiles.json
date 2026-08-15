@@ -1,0 +1,389 @@
+{
+  "schema": "xhs-platform-profiles/v1",
+  "profiles": {
+    "xhs_cn": {
+      "profile_id": "xhs_cn",
+      "label": "小红书自然发布",
+      "applicability": "中国大陆小红书 App 或创作服务平台的自然流量视频发布；公开官方页面未给出稳定的上传数值边界时只生成发布前人工核对项。",
+      "publication_mode": "organic",
+      "sources": [
+        {
+          "source_id": "xhs_creator_portal",
+          "url": "https://creator.xiaohongshu.com/",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "no_public_value",
+          "applies_to": ["resolution", "aspect_ratio", "fps", "duration", "audio", "ai_disclosure", "platform_preview"]
+        },
+        {
+          "source_id": "xhs_share_docs",
+          "url": "https://agora.xiaohongshu.com/doc",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["platform_preview"]
+        },
+        {
+          "source_id": "cac_ai_labels",
+          "url": "https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm",
+          "checked_at": "2026-08-15",
+          "authority": "regulator",
+          "evidence_status": "supports",
+          "applies_to": ["ai_disclosure"]
+        }
+      ],
+      "rules": {
+        "resolution": {"knowledge": "unknown", "enforcement": "manual", "exact_width": null, "exact_height": null, "min_width": null, "min_height": null, "min_short_edge": null, "source_ids": ["xhs_creator_portal"], "manual_check": "在当前账号的实际发布页核对可接受分辨率；公开官方入口未提供可复用数值，不推测。"},
+        "aspect_ratio": {"knowledge": "unknown", "enforcement": "manual", "allowed_exact": [], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["xhs_creator_portal"], "manual_check": "在小红书发布预览中核对 9:16 画面、封面裁切和 UI 遮挡。"},
+        "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["xhs_creator_portal"], "manual_check": "在实际上传页核对帧率兼容性；公开官方入口未提供稳定数值。"},
+        "duration": {"knowledge": "unknown", "enforcement": "manual", "min_ms": null, "max_ms": null, "min_inclusive": null, "max_inclusive": null, "source_ids": ["xhs_creator_portal"], "manual_check": "在当前账号发布页核对视频时长权限；不使用非官方经验值代替。"},
+        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["xhs_creator_portal"], "manual_check": "发布前人工试听最终上传文件，并复核响度与所有声音的使用权；基础信号检查和用户声明不等于工具核验。"},
+        "ai_disclosure": {"knowledge": "mixed", "source_ids": ["xhs_creator_portal", "cac_ai_labels"], "manual_check": "国家标识义务可执行；小红书端内入口仍需在发布页核对。", "kinds": {
+          "none": {"required": false, "verification": "not_required", "action": "无 AI 生成合成内容时不增加 AI 标签。", "basis": "未使用 AI 生成合成内容。"},
+          "assistive_text_only": {"required": null, "verification": "manual", "action": "核对平台当前 AI 标识规则，并保留片内 AI 辅助整理披露。", "basis": "公开官方入口未给出可机器执行的细分规则。"},
+          "synthetic_visual": {"required": true, "verification": "first_frame_ai_label", "action": "首帧使用固定标签“画面由AI生成”，并在发布页完成声明。", "basis": "生成合成视频须有显式与隐式标识，视频显式标识应位于起始画面。"},
+          "synthetic_audio": {"required": true, "verification": "first_frame_ai_label", "action": "首帧使用固定标签“旁白由AI合成”，并在发布页完成声明。", "basis": "生成合成音视频须有显式与隐式标识，视频显式标识应位于起始画面。"},
+          "realistic_altered": {"required": true, "verification": "first_frame_ai_label", "action": "首帧使用固定标签“画面经AI修改”，并在发布页完成声明。", "basis": "生成合成视频须有显式与隐式标识，视频显式标识应位于起始画面。"}
+        }},
+        "platform_preview": {"required": true, "items": ["手机端检查标题、字幕和底部 CTA 是否被 UI 遮挡", "核对封面在发现页与个人主页的裁切", "确认发布页的权限、话题、利益关系与 AI 标识"], "source_ids": ["xhs_creator_portal", "xhs_share_docs"], "manual_check": "必须使用目标账号完成最终发布预览。"}
+      }
+    },
+    "douyin_cn": {
+      "profile_id": "douyin_cn",
+      "label": "抖音开放平台发布",
+      "applicability": "通过抖音开放平台内容发布能力上传的视频；官方文档中的横竖版描述存在文字冲突，因此比例和分辨率不转写为硬限制。",
+      "publication_mode": "open_api_organic",
+      "sources": [
+        {
+          "source_id": "douyin_publish_solution",
+          "url": "https://open.douyin.com/platform/resource/docs/ability/content-management/douyin-publish-solution",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "conflicting",
+          "applies_to": ["resolution", "aspect_ratio", "fps", "audio", "platform_preview"]
+        },
+        {
+          "source_id": "douyin_publish_duration",
+          "url": "https://open.douyin.com/platform/resource/docs/ability/content-management/douyin-publish-solution",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["duration"]
+        },
+        {
+          "source_id": "douyin_user_agreement",
+          "url": "https://www.douyin.com/agreements/?id=6773906068725565448",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["ai_disclosure"]
+        },
+        {
+          "source_id": "cac_ai_labels",
+          "url": "https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm",
+          "checked_at": "2026-08-15",
+          "authority": "regulator",
+          "evidence_status": "supports",
+          "applies_to": ["ai_disclosure"]
+        }
+      ],
+      "rules": {
+        "resolution": {"knowledge": "unknown", "enforcement": "manual", "exact_width": null, "exact_height": null, "min_width": null, "min_height": null, "min_short_edge": null, "source_ids": ["douyin_publish_solution"], "manual_check": "官方页面同时出现 16:9 与竖版表述，先在目标发布入口预览，不猜测其方向含义。"},
+        "aspect_ratio": {"knowledge": "unknown", "enforcement": "manual", "allowed_exact": [], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["douyin_publish_solution"], "manual_check": "官方页面的比例与竖版文字冲突，需以实际上传预览为准。"},
+        "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["douyin_publish_solution"], "manual_check": "该官方页面未给出帧率数值，发布前核对。"},
+        "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 900000, "min_inclusive": null, "max_inclusive": true, "source_ids": ["douyin_publish_duration"], "manual_check": null},
+        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["douyin_publish_solution"], "manual_check": "该官方页面未给出静音或音轨要求；发布前人工试听最终上传文件，并复核响度及声音使用权。"},
+        "ai_disclosure": {"knowledge": "mixed", "source_ids": ["douyin_user_agreement", "cac_ai_labels"], "manual_check": "首帧标识可前检；抖音端内声明入口仍需人工完成。", "kinds": {
+          "none": {"required": false, "verification": "not_required", "action": "无 AI 生成合成内容时不增加 AI 标签。", "basis": "未使用 AI 生成合成内容。"},
+          "assistive_text_only": {"required": null, "verification": "manual", "action": "核对平台当前 AI 标识规则。", "basis": "发布接口文档没有 AI 披露细分。"},
+          "synthetic_visual": {"required": true, "verification": "first_frame_ai_label", "action": "首帧使用固定标签“画面由AI生成”，并在抖音发布流程声明。", "basis": "抖音协议要求可能引起混淆的生成合成音视频显著标识；国家办法要求视频起始画面标识。"},
+          "synthetic_audio": {"required": true, "verification": "first_frame_ai_label", "action": "首帧使用固定标签“旁白由AI合成”，并在抖音发布流程声明。", "basis": "抖音协议要求可能引起混淆的生成合成音视频显著标识；国家办法要求视频起始画面标识。"},
+          "realistic_altered": {"required": true, "verification": "first_frame_ai_label", "action": "首帧使用固定标签“画面经AI修改”，并在抖音发布流程声明。", "basis": "抖音协议及国家办法要求对易混淆的生成合成音视频显著标识。"}
+        }},
+        "platform_preview": {"required": true, "items": ["在目标账号上传预览中核对横竖版解释", "检查字幕与抖音 UI 安全区", "核对水印、话题、版权和 AI 标识"], "source_ids": ["douyin_publish_solution"], "manual_check": "必须在实际发布入口完成预览。"}
+      }
+    },
+    "tiktok_organic": {
+      "profile_id": "tiktok_organic",
+      "label": "TikTok 自然发布",
+      "applicability": "TikTok Studio 网页上传的普通自然流量视频；账号、区域和客户端能力仍需在发布页确认。",
+      "publication_mode": "organic",
+      "sources": [
+        {
+          "source_id": "tiktok_studio_upload",
+          "url": "https://support.tiktok.com/en/using-tiktok/creating-videos/creator-tools-on-tiktok",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["resolution", "duration", "platform_preview"]
+        },
+        {
+          "source_id": "tiktok_studio_no_public_values",
+          "url": "https://support.tiktok.com/en/using-tiktok/creating-videos/creator-tools-on-tiktok",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "no_public_value",
+          "applies_to": ["aspect_ratio", "fps", "audio"]
+        },
+        {
+          "source_id": "tiktok_aigc",
+          "url": "https://support.tiktok.com/en/using-tiktok/creating-videos/ai-generated-content",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["ai_disclosure"]
+        }
+      ],
+      "rules": {
+        "resolution": {"knowledge": "known", "enforcement": "hard", "exact_width": null, "exact_height": null, "min_width": 720, "min_height": 1280, "min_short_edge": null, "source_ids": ["tiktok_studio_upload"], "manual_check": null},
+        "aspect_ratio": {"knowledge": "unknown", "enforcement": "manual", "allowed_exact": [], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["tiktok_studio_no_public_values"], "manual_check": "官方 Studio 上传页面没有给出可执行比例边界；在平台预览核对 9:16。"},
+        "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["tiktok_studio_no_public_values"], "manual_check": "官方 Studio 上传页面未给出帧率边界。"},
+        "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 1800000, "min_inclusive": null, "max_inclusive": true, "source_ids": ["tiktok_studio_upload"], "manual_check": null},
+        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["tiktok_studio_no_public_values"], "manual_check": "静音技术上未在该页面被禁止；发布前仍需人工试听并复核声音、字幕与版权策略。"},
+        "ai_disclosure": {"knowledge": "mixed", "source_ids": ["tiktok_aigc"], "manual_check": "合成视觉或音频是否逼真需人工判断。", "kinds": {
+          "none": {"required": false, "verification": "not_required", "action": "无需开启 AIGC 标签。", "basis": "未使用 AI 生成或重大修改的媒体。"},
+          "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因脚本文字辅助开启 AIGC 标签；保留真实的数据范围披露。", "basis": "TikTok 的 AIGC 定义面向 AI 生成或修改的图像、视频和音频。"},
+          "synthetic_visual": {"required": null, "verification": "manual", "action": "判断画面是否完整生成、显著编辑或逼真；逼真 AIGC 必须标记。", "basis": "TikTok 要求逼真 AIGC 标记，并鼓励对完整生成或显著编辑内容标记。"},
+          "synthetic_audio": {"required": null, "verification": "manual", "action": "判断音频是否完整生成、显著编辑或逼真；逼真 AIGC 必须标记。", "basis": "TikTok 要求逼真 AIGC 标记，并鼓励对完整生成或显著编辑内容标记。"},
+          "realistic_altered": {"required": true, "verification": "platform_setting", "action": "在 TikTok 发布设置中开启 AI-generated content 标签。", "basis": "TikTok 要求所有包含逼真图像、音频或视频的 AIGC 进行标记。"}
+        }},
+        "platform_preview": {"required": true, "items": ["检查 TikTok UI 安全区和自动字幕", "选择封面并检查个人主页裁切", "执行声音版权检查并核对 AIGC 标签"], "source_ids": ["tiktok_studio_upload"], "manual_check": "必须在目标账号的 TikTok Studio 预览。"}
+      }
+    },
+    "tiktok_ads": {
+      "profile_id": "tiktok_ads",
+      "label": "TikTok Reservation In-Feed Non-Spark/Push",
+      "applicability": "仅适用于 TikTok Reservation In-Feed 的 Non-Spark Ads 或 Spark Ads Push 竖版 9:16 素材；不适用于 Spark Ads Pull、Auction Ads 或普通自然发布。",
+      "publication_mode": "ads",
+      "sources": [
+        {
+          "source_id": "tiktok_reservation_infeed",
+          "url": "https://ads.tiktok.com/help/article/tiktok-reservation-in-feed-ads-reach-frequency",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["resolution", "aspect_ratio", "duration", "audio", "platform_preview"]
+        },
+        {
+          "source_id": "tiktok_reservation_no_public_fps",
+          "url": "https://ads.tiktok.com/help/article/tiktok-reservation-in-feed-ads-reach-frequency",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "no_public_value",
+          "applies_to": ["fps"]
+        },
+        {
+          "source_id": "tiktok_aigc",
+          "url": "https://support.tiktok.com/en/using-tiktok/creating-videos/ai-generated-content",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["ai_disclosure"]
+        }
+      ],
+      "rules": {
+        "resolution": {"knowledge": "known", "enforcement": "hard", "exact_width": null, "exact_height": null, "min_width": 540, "min_height": 960, "min_short_edge": null, "source_ids": ["tiktok_reservation_infeed"], "manual_check": null},
+        "aspect_ratio": {"knowledge": "known", "enforcement": "hard", "allowed_exact": ["9:16"], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["tiktok_reservation_infeed"], "manual_check": "本 profile 只验证官方竖版规格；仍需在 Ads Manager 预览安全区。"},
+        "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["tiktok_reservation_no_public_fps"], "manual_check": "该官方规格页未给出帧率边界。"},
+        "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": 5000, "max_ms": 60000, "min_inclusive": true, "max_inclusive": true, "source_ids": ["tiktok_reservation_infeed"], "manual_check": null},
+        "audio": {"knowledge": "known", "enforcement": "hard", "allowed_kinds": [], "required": true, "source_ids": ["tiktok_reservation_infeed"], "manual_check": "官方要求广告素材包含声音；v1 静音素材会阻断，v2 仍须人工试听最终编码文件并复核声音使用权。"},
+        "ai_disclosure": {"knowledge": "mixed", "source_ids": ["tiktok_aigc"], "manual_check": "广告政策与地区规则还需在 Ads Manager 复核。", "kinds": {
+          "none": {"required": false, "verification": "not_required", "action": "无需开启 AIGC 标签。", "basis": "未使用 AI 生成或重大修改的媒体。"},
+          "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因脚本文字辅助开启 AIGC 标签。", "basis": "TikTok 的 AIGC 定义面向 AI 生成或修改的图像、视频和音频。"},
+          "synthetic_visual": {"required": null, "verification": "manual", "action": "判断是否逼真或显著编辑，并在 Ads Manager 复核。", "basis": "逼真 AIGC 必须标记。"},
+          "synthetic_audio": {"required": null, "verification": "manual", "action": "判断是否逼真或显著编辑，并在 Ads Manager 复核。", "basis": "逼真 AIGC 必须标记。"},
+          "realistic_altered": {"required": true, "verification": "platform_setting", "action": "在 TikTok 发布流程中开启 AI-generated content 标签，并复核广告政策。", "basis": "TikTok 要求逼真 AIGC 标记。"}
+        }},
+        "platform_preview": {"required": true, "items": ["使用 Ads Manager 安全区预览检查字幕和 CTA", "确认素材属于 Non-Spark/Push 而不是 Spark Pull", "完成广告审核、音乐版权和落地页核对"], "source_ids": ["tiktok_reservation_infeed"], "manual_check": "必须在目标广告账户预览与送审。"}
+      }
+    },
+    "youtube_shorts": {
+      "profile_id": "youtube_shorts",
+      "label": "YouTube Shorts",
+      "applicability": "2024-10-15 之后上传到标准频道的方形或竖版 Shorts；音乐版权和 Official Artist Channel 的特殊条件另行核对。",
+      "publication_mode": "organic",
+      "sources": [
+        {
+          "source_id": "youtube_three_minute_shorts",
+          "url": "https://support.google.com/youtube/answer/15424877",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["aspect_ratio", "duration", "audio", "platform_preview"]
+        },
+        {
+          "source_id": "youtube_shorts_no_public_values",
+          "url": "https://support.google.com/youtube/answer/15424877",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "no_public_value",
+          "applies_to": ["resolution", "fps"]
+        },
+        {
+          "source_id": "youtube_altered_content",
+          "url": "https://support.google.com/youtube/answer/14328491",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["ai_disclosure"]
+        }
+      ],
+      "rules": {
+        "resolution": {"knowledge": "unknown", "enforcement": "manual", "exact_width": null, "exact_height": null, "min_width": null, "min_height": null, "min_short_edge": null, "source_ids": ["youtube_shorts_no_public_values"], "manual_check": "该 Shorts 资格页未给出分辨率数值，上传前在 Studio 核对处理结果。"},
+        "aspect_ratio": {"knowledge": "known", "enforcement": "hard", "allowed_exact": [], "allowed_orientations": ["portrait", "square"], "min_ratio": null, "max_ratio": null, "source_ids": ["youtube_three_minute_shorts"], "manual_check": null},
+        "fps": {"knowledge": "unknown", "enforcement": "manual", "exact": null, "min": null, "max": null, "source_ids": ["youtube_shorts_no_public_values"], "manual_check": "该 Shorts 资格页未给出帧率数值。"},
+        "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 180000, "min_inclusive": null, "max_inclusive": true, "source_ids": ["youtube_three_minute_shorts"], "manual_check": null},
+        "audio": {"knowledge": "mixed", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["youtube_three_minute_shorts"], "manual_check": "超过 1 分钟的 Short 如有有效 Content ID claim 会被全球阻断；发布前确认最终音频与版权策略。"},
+        "ai_disclosure": {"knowledge": "mixed", "source_ids": ["youtube_altered_content"], "manual_check": "合成视觉或音频是否逼真、重大需人工判断。", "kinds": {
+          "none": {"required": false, "verification": "not_required", "action": "无需选择 altered content。", "basis": "未使用 AI 生成或重大修改的媒体。"},
+          "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因脚本、标题、缩略图、信息图或字幕辅助选择 altered content。", "basis": "YouTube 明确把这些 production assistance 列为无需创作者披露的例子。"},
+          "synthetic_visual": {"required": null, "verification": "manual", "action": "判断画面是否逼真且属于重大生成或修改；符合时在 YouTube Studio 选择 altered content。", "basis": "不逼真或轻微编辑通常不要求，逼真且重大则要求。"},
+          "synthetic_audio": {"required": null, "verification": "manual", "action": "判断音频类型；合成音乐或他人克隆声等情形需在 YouTube Studio 披露。", "basis": "YouTube 对不同合成音频情形给出不同例子。"},
+          "realistic_altered": {"required": true, "verification": "platform_setting", "action": "在 YouTube Studio 的 Details 中将 Altered content 设为 Yes。", "basis": "逼真且有意义地修改或合成的内容必须披露。"}
+        }},
+        "platform_preview": {"required": true, "items": ["在 YouTube Studio 确认被识别为 Short", "检查标题、字幕、缩略图和移动端安全区", "超过 1 分钟时确认不存在会阻断的 Content ID claim"], "source_ids": ["youtube_three_minute_shorts"], "manual_check": "必须在目标频道上传检查页完成预览。"}
+      }
+    },
+    "instagram_reels": {
+      "profile_id": "instagram_reels",
+      "label": "Instagram Reels 自然发布",
+      "applicability": "Instagram 自然流量 Reel；超过 3 分钟不推荐给新受众，但不等同于上传失败。",
+      "publication_mode": "organic",
+      "sources": [
+        {
+          "source_id": "instagram_reel_specs",
+          "url": "https://www.facebook.com/help/1038071743007909",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["resolution", "aspect_ratio", "fps", "platform_preview"]
+        },
+        {
+          "source_id": "instagram_reel_length",
+          "url": "https://www.facebook.com/help/instagram/225190788256708",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["duration", "platform_preview"]
+        },
+        {
+          "source_id": "instagram_reel_audio_no_public_value",
+          "url": "https://www.facebook.com/help/instagram/225190788256708",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "no_public_value",
+          "applies_to": ["audio"]
+        },
+        {
+          "source_id": "meta_ai_labels",
+          "url": "https://about.fb.com/news/2024/04/metas-approach-to-labeling-ai-generated-content-and-manipulated-media/",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["ai_disclosure"]
+        }
+      ],
+      "rules": {
+        "resolution": {"knowledge": "known", "enforcement": "hard", "exact_width": null, "exact_height": null, "min_width": null, "min_height": null, "min_short_edge": 720, "source_ids": ["instagram_reel_specs"], "manual_check": null},
+        "aspect_ratio": {"knowledge": "known", "enforcement": "hard", "allowed_exact": [], "allowed_orientations": [], "min_ratio": "9:16", "max_ratio": "191:100", "source_ids": ["instagram_reel_specs"], "manual_check": null},
+        "fps": {"knowledge": "known", "enforcement": "hard", "exact": null, "min": 30, "max": null, "source_ids": ["instagram_reel_specs"], "manual_check": null},
+        "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 1200000, "min_inclusive": null, "max_inclusive": true, "source_ids": ["instagram_reel_length"], "manual_check": "超过 3 分钟不会推荐给新受众；本检查把它作为人工分发判断而非上传阻断。"},
+        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["instagram_reel_audio_no_public_value"], "manual_check": "发布前人工试听并确认原声、音乐授权和静音观看策略。"},
+        "ai_disclosure": {"knowledge": "mixed", "source_ids": ["meta_ai_labels"], "manual_check": "合成媒体是否触发 AI info 需按实际素材和元数据核对。", "kinds": {
+          "none": {"required": false, "verification": "not_required", "action": "无需使用 AI 内容披露工具。", "basis": "未使用 AI 生成或重大修改的媒体。"},
+          "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因文字整理把视频误报成合成媒体；片内仍保留 AI 辅助透明披露。", "basis": "Meta 的媒体标签规则针对生成或修改的图像、视频和音频。"},
+          "synthetic_visual": {"required": null, "verification": "manual", "action": "检查生成程度、元数据和自披露入口。", "basis": "Meta 会根据行业信号或自披露标记生成媒体。"},
+          "synthetic_audio": {"required": null, "verification": "manual", "action": "检查生成程度、元数据和自披露入口。", "basis": "Meta 会根据行业信号或自披露标记生成媒体。"},
+          "realistic_altered": {"required": true, "verification": "platform_setting", "action": "在 Instagram 发布流程使用 AI 内容披露工具并确认 AI info 标签。", "basis": "Meta 对高欺骗风险内容使用更显著标签，并接受自披露。"}
+        }},
+        "platform_preview": {"required": true, "items": ["检查 Reels、Feed 和个人主页三种裁切", "检查 9:16 画面中的字幕和 UI 安全区", "确认封面、最高质量上传、音频版权与 AI info"], "source_ids": ["instagram_reel_specs", "instagram_reel_length"], "manual_check": "必须在目标 Instagram 账号完成预览。"}
+      }
+    },
+    "instagram_boost": {
+      "profile_id": "instagram_boost",
+      "label": "Instagram Reel Boost",
+      "applicability": "将 Instagram Reel 直接 Boost 为广告的项目交付门槛；官方资格要求与本项目的有意图音频策略分别呈现。",
+      "publication_mode": "boost",
+      "sources": [
+        {
+          "source_id": "instagram_boost_requirements",
+          "url": "https://www.facebook.com/help/instagram/570215404599013",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["aspect_ratio", "duration", "audio", "platform_preview"]
+        },
+        {
+          "source_id": "instagram_reel_specs",
+          "url": "https://www.facebook.com/help/1038071743007909",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["resolution", "fps", "platform_preview"]
+        },
+        {
+          "source_id": "instagram_facebook_boost_sound",
+          "url": "https://www.facebook.com/help/instagram/5557385897683570/",
+          "checked_at": "2026-08-15",
+          "authority": "official_recommendation",
+          "evidence_status": "supports",
+          "applies_to": ["audio"]
+        },
+        {
+          "source_id": "meta_ai_ads",
+          "url": "https://about.fb.com/news/2025/02/gen-ai-transparency-metas-ads-products/",
+          "checked_at": "2026-08-15",
+          "authority": "official",
+          "evidence_status": "supports",
+          "applies_to": ["ai_disclosure"]
+        }
+      ],
+      "rules": {
+        "resolution": {"knowledge": "known", "enforcement": "hard", "exact_width": null, "exact_height": null, "min_width": null, "min_height": null, "min_short_edge": 720, "source_ids": ["instagram_reel_specs"], "manual_check": null},
+        "aspect_ratio": {"knowledge": "known", "enforcement": "hard", "allowed_exact": ["9:16"], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["instagram_boost_requirements"], "manual_check": null},
+        "fps": {"knowledge": "known", "enforcement": "hard", "exact": null, "min": 30, "max": null, "source_ids": ["instagram_reel_specs"], "manual_check": null},
+        "duration": {"knowledge": "known", "enforcement": "hard", "min_ms": null, "max_ms": 90000, "min_inclusive": null, "max_inclusive": false, "source_ids": ["instagram_boost_requirements"], "manual_check": null},
+        "audio": {"knowledge": "known", "enforcement": "project_gate", "allowed_kinds": ["original", "royalty_free"], "required": true, "source_ids": ["instagram_boost_requirements", "instagram_facebook_boost_sound"], "manual_check": "官方将声音列为更适配 Reels placement 的建议并禁止受版权保护音乐；本项目把明确的原声或免版税声音策略设为付费投放交付门槛。v1 静音素材会阻断；v2 的基础信号与用户权利声明仍需人工试听和权利复核。"},
+        "ai_disclosure": {"knowledge": "mixed", "source_ids": ["meta_ai_ads"], "manual_check": "广告 AI 标签会因生成程度、工具和地区变化，需在账户中确认。", "kinds": {
+          "none": {"required": false, "verification": "not_required", "action": "无需使用 AI 内容披露工具。", "basis": "未使用 AI 生成或重大修改的媒体。"},
+          "assistive_text_only": {"required": false, "verification": "not_required", "action": "无需仅因脚本文字辅助把素材误报成生成式媒体。", "basis": "Meta 广告标签面向由生成式创意工具创建或显著编辑的图像和视频。"},
+          "synthetic_visual": {"required": null, "verification": "manual", "action": "检查生成程度、第三方信号和 About this ad 中的 AI info。", "basis": "显著编辑或生成的广告素材可能显示 AI info。"},
+          "synthetic_audio": {"required": null, "verification": "manual", "action": "检查生成程度、第三方信号和账户披露入口。", "basis": "第三方工具检测与地区体验仍在演进。"},
+          "realistic_altered": {"required": true, "verification": "platform_setting", "action": "在广告发布流程完成 AI 披露，并在 About this ad 核对 AI info。", "basis": "Meta 为生成或显著编辑的广告素材提供 AI info 透明标签。"}
+        }},
+        "platform_preview": {"required": true, "items": ["在 Instagram Boost 预览确认全屏 9:16", "确认没有受版权保护音乐、GIF、互动贴纸或第三方滤镜", "完成广告政策、受众、落地页与 AI info 审核"], "source_ids": ["instagram_boost_requirements", "instagram_reel_specs"], "manual_check": "必须在目标广告账户提交前预览。"}
+      }
+    },
+    "cross_platform_master_60": {
+      "profile_id": "cross_platform_master_60",
+      "label": "跨平台 60 秒母版策略",
+      "applicability": "仅验证本项目 1080×1920、30 fps、最长 60 秒的母版策略；不证明任何平台已接受素材，不替代逐平台 profile、音频权利、AI 标签或发布预览。",
+      "publication_mode": "project_policy",
+      "sources": [
+        {
+          "source_id": "project_cross_platform_policy",
+          "url": "https://github.com/lingxuanqjc-alt/xhs-question-solutions/blob/main/.agents/skills/xhs-question-solutions/references/platform-profiles.json",
+          "checked_at": "2026-08-15",
+          "authority": "project_policy",
+          "evidence_status": "project_policy",
+          "applies_to": ["resolution", "aspect_ratio", "fps", "duration", "audio", "ai_disclosure", "platform_preview"]
+        }
+      ],
+      "rules": {
+        "resolution": {"knowledge": "known", "enforcement": "project_gate", "exact_width": 1080, "exact_height": 1920, "min_width": null, "min_height": null, "min_short_edge": null, "source_ids": ["project_cross_platform_policy"], "manual_check": null},
+        "aspect_ratio": {"knowledge": "known", "enforcement": "project_gate", "allowed_exact": ["9:16"], "allowed_orientations": [], "min_ratio": null, "max_ratio": null, "source_ids": ["project_cross_platform_policy"], "manual_check": null},
+        "fps": {"knowledge": "known", "enforcement": "project_gate", "exact": 30, "min": null, "max": null, "source_ids": ["project_cross_platform_policy"], "manual_check": null},
+        "duration": {"knowledge": "known", "enforcement": "project_gate", "min_ms": null, "max_ms": 60000, "min_inclusive": null, "max_inclusive": true, "source_ids": ["project_cross_platform_policy"], "manual_check": "60 秒是项目母版门槛，不是任何平台的官方上限。"},
+        "audio": {"knowledge": "unknown", "enforcement": "manual", "allowed_kinds": [], "required": null, "source_ids": ["project_cross_platform_policy"], "manual_check": "为各目标平台分别确认有声与静音观看策略和音乐授权。"},
+        "ai_disclosure": {"knowledge": "known", "source_ids": ["project_cross_platform_policy"], "manual_check": "合成媒体需要比通用 AI 辅助文案更具体的披露。", "kinds": {
+          "none": {"required": false, "verification": "not_required", "action": "无需添加 AI 披露。", "basis": "未使用 AI 生成或重大修改的媒体。"},
+          "assistive_text_only": {"required": true, "verification": "visible_ai_assisted", "action": "保留视频内 AI 辅助整理披露。", "basis": "本项目要求所有社交发布稿披露 AI 辅助。"},
+          "synthetic_visual": {"required": true, "verification": "manual", "action": "增加明确的合成视觉披露并逐平台核对上传标签。", "basis": "通用 AI 辅助字样不足以说明合成画面。"},
+          "synthetic_audio": {"required": true, "verification": "manual", "action": "增加明确的合成音频披露并逐平台核对上传标签。", "basis": "通用 AI 辅助字样不足以说明合成音频。"},
+          "realistic_altered": {"required": true, "verification": "manual", "action": "增加明确披露并逐平台开启逼真合成或修改内容标签。", "basis": "跨平台发布必须采用各平台中更严格的披露流程。"}
+        }},
+        "platform_preview": {"required": true, "items": ["分别在每个目标平台预览 UI 安全区与封面裁切", "逐平台确认时长、音频版权和 AI 标签", "禁止用母版检查替代任何平台验收"], "source_ids": ["project_cross_platform_policy"], "manual_check": "母版 profile 只验证项目策略，不能替代逐平台预览。"}
+      }
+    }
+  }
+}

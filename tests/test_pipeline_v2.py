@@ -184,11 +184,13 @@ class RenderTests(unittest.TestCase):
         analysis = good(); analysis["posts"][0]["comments"][0]["category"] = "counterexample"
         card = next(card for card in build_card_decks(canonical(), analysis)["decks"][0]["cards"] if card["role"] == "counterexample")
         self.assertTrue(any(block.get("tone") == "caution" and "对照场景" in block.get("text", "") for block in card["blocks"]))
-    def test_social_title_is_used_only_for_card_cover(self):
+    def test_social_title_is_used_for_cover_and_video_hook_without_replacing_question(self):
         analysis = good(); post = analysis["posts"][0]; post["question"] = "这是用于报告和视频的完整问题描述吗？"; post["social_title"] = "墙面反复发霉怎么办？"
         card_decks = build_card_decks(canonical(), analysis)
+        video = render(canonical(), analysis, "short-video")
         self.assertEqual("墙面反复发霉怎么办？", card_decks["decks"][0]["cards"][0]["title"])
-        self.assertIn(post["question"], render(canonical(), analysis, "report")); self.assertIn(post["question"], render(canonical(), analysis, "short-video"))
+        self.assertIn(post["question"], render(canonical(), analysis, "report")); self.assertIn(post["question"], video)
+        self.assertIn(post["social_title"], video)
         self.assertNotIn(post["question"], render_card_decks_markdown(card_decks))
     def test_synthetic_high_risk_cover_and_scope_are_reader_facing(self):
         root = Path(__file__).resolve().parents[1]

@@ -9,16 +9,19 @@ const NOTICE_TEXT = {
   high_risk_needs_review: "高风险 · 发布前人工复核",
   experience_not_fact: "评论个案 ≠ 普遍事实",
   ai_assisted: "AI 辅助整理",
+  synthetic_audio: "旁白由AI合成",
 };
+const SCENE_EXIT_OPACITY_FLOOR = 0.82;
 
 export const SceneShell = ({scene, video, eyebrow, children}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const contentRef = useRef(null);
   const [layoutHandle] = useState(() => delayRender(`measure ${scene.scene_id}`));
-  const enter = spring({frame, fps, config: {damping: 18, mass: 0.7, stiffness: 95}});
+  const entrySpring = spring({frame, fps, config: {damping: 18, mass: 0.7, stiffness: 95}});
+  const enter = scene.role === "hook" ? 1 : entrySpring;
   const sceneFrames = Math.round((scene.end_ms - scene.start_ms) * fps / 1000);
-  const exit = interpolate(frame, [Math.max(0, sceneFrames - 10), sceneFrames], [1, 0], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
+  const exit = interpolate(frame, [Math.max(0, sceneFrames - 10), sceneFrames], [1, SCENE_EXIT_OPACITY_FLOOR], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
   const nowMs = scene.start_ms + frame * 1000 / fps;
   const caption = scene.captions.find((item) => nowMs >= item.startMs && nowMs < item.endMs);
 
@@ -51,9 +54,17 @@ export const SceneShell = ({scene, video, eyebrow, children}) => {
     return () => cancelAnimationFrame(frameId);
   }, [layoutHandle, scene.scene_id]);
 
+  const audio = video.meta.audio;
+  const isSyntheticHook = scene.role === "hook" && audio.kind === "external_voiceover" && audio.origin === "synthetic_ai";
+  const firstFrameAiLabel = isSyntheticHook ? audio.disclosure_text : null;
   const warning = scene.persistent_notices.includes("unsafe_unverified_not_advice");
-  const minorNotices = scene.persistent_notices.filter((code) => code !== "unsafe_unverified_not_advice");
+  const minorNotices = scene.persistent_notices.filter((code) => (
+    code !== "unsafe_unverified_not_advice" && !(isSyntheticHook && code === "synthetic_audio")
+  ));
   const progress = Math.min(100, Math.max(0, scene.end_ms / video.duration_ms * 100));
+  const audioDisclosure = audio.kind === "none"
+    ? "无配音版 · 静音也能看懂"
+    : audio.origin === "synthetic_ai" ? "有声版 · 已确认使用权" : "真人旁白 · 已确认使用权";
   return (
     <AbsoluteFill className={`video-canvas role-${scene.role}`} style={{opacity: exit}} data-scene-id={scene.scene_id}>
       <div className="ambient ambient-a" style={{transform: `translate3d(${(1 - enter) * -90}px, ${(1 - enter) * 40}px, 0)`}} />
@@ -64,18 +75,21 @@ export const SceneShell = ({scene, video, eyebrow, children}) => {
         <div className="scene-count">{String(scene.index).padStart(2, "0")} / {String(video.scenes.length).padStart(2, "0")}</div>
       </header>
       {warning ? <div className="persistent-warning">{NOTICE_TEXT.unsafe_unverified_not_advice}</div> : null}
-      <main className="scene-content" ref={contentRef} style={{transform: `translateY(${(1 - enter) * 36}px)`, opacity: enter}}>
+      <main className="scene-content" ref={contentRef} style={{transform: `translateY(${(1 - enter) * 36}px)`}}>
         {children}
       </main>
       <div className="scene-notices">
+        {firstFrameAiLabel ? (
+          <span className="first-frame-ai-label notice-chip notice-synthetic_audio" data-first-frame-ai-label={firstFrameAiLabel}>{firstFrameAiLabel}</span>
+        ) : null}
         {minorNotices.map((code) => <span className={`notice-chip notice-${code}`} key={code}>{NOTICE_TEXT[code]}</span>)}
       </div>
       {scene.evidence_comment_ids.length ? (
         <div className="evidence-strip"><span>证据定位</span>{scene.evidence_comment_ids.map((id) => <b key={id}>#{id}</b>)}</div>
       ) : null}
-      <CaptionOverlay caption={caption} sceneId={scene.scene_id} />
+      <CaptionOverlay caption={caption} sceneId={scene.scene_id} sceneStartMs={scene.start_ms} />
       <div aria-hidden="true">{scene.captions.map((item, index) => <div className="caption-card caption-probe" key={index}>{item.text}</div>)}</div>
-      <div className="audio-disclosure">无配音版 · 静音也能看懂</div>
+      <div className="audio-disclosure">{audioDisclosure}</div>
     </AbsoluteFill>
   );
 };

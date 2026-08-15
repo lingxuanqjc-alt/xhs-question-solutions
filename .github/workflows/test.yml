@@ -31,7 +31,7 @@ jobs:
         run: npm ci --prefix .agents/skills/xhs-question-solutions --ignore-scripts --no-audit --no-fund
 
       - name: Run standard-library tests
-        run: python -m unittest discover -s tests -v
+        run: python -X utf8 -m unittest discover -s tests -v
 
       - name: Install and verify on Ubuntu
         if: runner.os == 'Linux'
@@ -44,6 +44,8 @@ jobs:
           test -f "$install_root/.agents/skills/xhs-question-solutions/assets/card-deck.css"
           test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/render_card_images.py"
           test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/capture_cards.cjs"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/check_publish_profile.py"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/import_voiceover.py"
           test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/render_video.py"
           test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/render_video.mjs"
           test -f "$install_root/.agents/skills/xhs-question-solutions/package.json"
@@ -52,6 +54,7 @@ jobs:
           installed_core="$install_root/.agents/skills/xhs-question-solutions"
           test -d "$source_core/node_modules"
           test ! -e "$installed_core/node_modules"
+          python -X utf8 "$installed_core/scripts/render_video.py" --help | grep -F -- '--project-dir'
           diff -u \
             <(cd "$source_core" && find remotion -type f -print | sort) \
             <(cd "$installed_core" && find remotion -type f -print | sort)
@@ -75,6 +78,8 @@ jobs:
             "assets/card-deck.css",
             "scripts/render_card_images.py",
             "scripts/capture_cards.cjs",
+            "scripts/check_publish_profile.py",
+            "scripts/import_voiceover.py",
             "scripts/render_video.py",
             "scripts/render_video.mjs",
             "package.json",
@@ -93,6 +98,10 @@ jobs:
           }
           if (Test-Path -LiteralPath (Join-Path $coreRoot "node_modules")) {
             throw "Installer copied local node_modules into the installed skill."
+          }
+          $renderHelp = & python -X utf8 (Join-Path $coreRoot "scripts/render_video.py") --help 2>&1 | Out-String
+          if (-not $renderHelp.Contains("--project-dir")) {
+            throw "Installed renderer does not expose the v2 project loader."
           }
           $sourceRemotionRoot = Join-Path $sourceCoreRoot "remotion"
           $installedRemotionRoot = Join-Path $coreRoot "remotion"
@@ -122,30 +131,13 @@ jobs:
           python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_card_images.py build/ci/sample.jsonl examples/sample-analysis.json build/ci/cards --style morandi --png
           python -X utf8 -c "from pathlib import Path; files=list(Path('build/ci/cards').rglob('*.png')); assert len(files)==13, len(files)"
 
-      - name: Render three-frame H.264 composition smoke on Ubuntu
-        if: runner.os == 'Linux'
-        shell: bash
+      - name: Exercise reviewed voiceover init and build CLI
         run: |
-          test -x /usr/bin/google-chrome
-          python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_video.py build/ci/sample.jsonl examples/sample-analysis.json build/ci/video
-          props=(build/ci/video/*.props.json)
-          test "${#props[@]}" -eq 1
-          node .agents/skills/xhs-question-solutions/scripts/render_video.mjs \
-            --props "${props[0]}" \
-            --output build/ci/video/composition-smoke.mp4 \
-            --browser /usr/bin/google-chrome \
-            --frame-range 0:2 \
-            > build/ci/video/composition-smoke.json
-          python -X utf8 -c "import json; from pathlib import Path; video=Path('build/ci/video/composition-smoke.mp4'); data=video.read_bytes(); summary=json.loads(Path('build/ci/video/composition-smoke.json').read_text(encoding='utf-8')); probe=summary['probe']; assert len(data)>16 and b'ftyp' in data[:64]; assert summary['codec']=='h264' and summary['rendered_frame_range']==[0,2] and summary['file_size']==len(data); assert probe['codec']=='h264' and (probe['width'],probe['height'],probe['audio_streams'])==(1080,1920,0)"
-          python -X utf8 -c "import json; from pathlib import Path; source=Path('${props[0]}'); data=json.loads(source.read_text(encoding='utf-8')); scene=data['video']['scenes'][0]; scene['narration']='W'*40; scene['captions']=[{'text':'W'*40,'startMs':200,'endMs':2700,'timestampMs':None,'confidence':None}]; Path('build/ci/video/overflow.props.json').write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')"
-          if node .agents/skills/xhs-question-solutions/scripts/render_video.mjs \
-            --props build/ci/video/overflow.props.json \
-            --output build/ci/video/overflow.mp4 \
-            --browser /usr/bin/google-chrome \
-            --frame-range 0:2 \
-            > build/ci/video/overflow.stdout 2> build/ci/video/overflow.stderr; then
-            echo "Expected caption overflow render to fail" >&2
-            exit 1
-          fi
-          grep -F 'CAPTION_OVERFLOW' build/ci/video/overflow.stderr
-          test ! -e build/ci/video/overflow.mp4
+          python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_video.py build/ci/sample.jsonl examples/sample-analysis.json build/ci/v1
+          python -X utf8 .agents/skills/xhs-question-solutions/scripts/import_voiceover.py init build/ci/v1/video-projects.json build/ci/voiceover/manifest.json
+          python -X utf8 tests/prepare_ci_voiceover.py build/ci/voiceover/manifest.json
+          python -X utf8 .agents/skills/xhs-question-solutions/scripts/import_voiceover.py build build/ci/v1/video-projects.json build/ci/voiceover/manifest.json build/ci/v2 --confirm-audio-reviewed --confirm-audio-rights
+          python -X utf8 -c "import json; from pathlib import Path; project=json.loads(Path('build/ci/v2/video-projects.json').read_text(encoding='utf-8')); assert project['schema']=='xhs-video/v2'; assert project['videos'][0]['meta']['audio']['origin']=='synthetic_ai'; assert list(Path('build/ci/v2/assets/voiceover').glob('*.wav'))"
+
+      - name: Render and ffprobe silent and voiced three-frame compositions
+        run: python -X utf8 tests/render_ci_video_smoke.py build/ci/v1 build/ci/v2

@@ -1,4 +1,4 @@
 interface:
   display_name: "小红书评论解题"
-  short_description: "筛选问题帖，将评论证据转成可追溯方案、图文卡片与视频项目"
-  default_prompt: "Use $xhs-question-solutions to screen Xiaohongshu question posts and turn the collected comments into a traceable Chinese solution plus publish-ready cards and a video project."
+  short_description: "筛选问题帖，将评论证据转成可追溯方案、卡片与静音或外部配音视频"
+  default_prompt: "Use $xhs-question-solutions to screen Xiaohongshu question posts and turn collected comments into a traceable Chinese solution, cards, and a validated video project. Keep xhs-video/v1 silent; only build xhs-video/v2 when I provide reviewed WAV files and explicitly confirm review and rights."

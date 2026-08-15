@@ -47,6 +47,7 @@
       ],
       "solution": {
         "summary": "一句话答案",
+        "primary_stop_condition": "何时停止或升级处理",
         "risk_level": "medium",
         "publish_status": "needs_review",
         "claims": [
@@ -94,7 +95,7 @@
 
 ## 枚举
 
-`social_title` 是可选的社交封面标题，只影响卡片封面，不替代 `question`。提供时必须是单行字符串，包含 8–28 个非空白可见字符；不得使用“震惊”“必看”“百分百”“根治”“保证”等无证据承诺。缺失时封面回退为 `question`。
+`social_title` 是可选的社交短标题，用于卡片封面和视频前三秒钩子，不替代报告、选题与证据语境中的 `question`。提供时必须是单行字符串，包含 8–28 个非空白可见字符；不得使用“震惊”“必看”“百分百”“根治”“保证”等无证据承诺。缺失时回退为 `question`。
 
 - `question_type`：`how_to`、`choice`、`diagnosis`、`recommendation`、`experience_request`、`fact_check`、`other`
 - `category`：`direct_answer`、`firsthand_experience`、`risk_warning`、`counterexample`、`clarifying_question`、`speculation`、`off_topic`
@@ -106,6 +107,8 @@
 - `publish_status`：`ready`、`needs_review`
 
 `external_sources` 是放在 `external_fact` 主张中的 URL 字符串列表。高风险结果要标为 `ready` 时，所有外部事实主张都必须为 `supported` 且带有效 URL。所有评论 ID 必须属于当前笔记；所有步骤评论 ID 必须被其 `claim_ids` 对应的主张覆盖。
+
+`solution.primary_stop_condition` 是可选的语义选择字段，供短视频 CTA 突出一个主停止边界；提供时必须逐字等于某个 `steps[*].stop_conditions[*]`。`primary_stop_condition` 与每个 `stop_conditions` 条目都禁止首尾空白，避免分析校验与渲染复制采用不同字符串。该选择由分析阶段完成，渲染代码只复制，不按关键词猜测“最安全”的条件。缺失时视频 CTA 保留全部停止条件；完整停止文案超过 60 个显示单位时，构建器必须提前以 `CTA_STOP_CONDITIONS_TOO_LONG` 失败，不能等浏览器版式检测。显式主条件生成的文案超限时对应 `CTA_PRIMARY_STOP_TOO_LONG`。
 
 ## Video IR: `xhs-video/v1`
 
@@ -139,3 +142,119 @@
 - `unsafe_evidence_comment_ids` 是 Python 从已校验评论 `risk_flags` 生成的必填安全清单。Node 必须以此清单核对附录固定警示及每个引用场景，不得从可选展示文案反推危险性。
 - `appendix` 复用规范化评论的证据字段，不让模型复制或改写证据索引。
 - 当前渲染配置为 1080×1920、30 fps、H.264、无音轨；`meta.audio.kind` 必须为 `none`，不表示已生成 TTS 或配音。
+- 发布前检对视频 IR 使用严格标量类型：`width`、`height`、`fps`、`duration_ms`、`duration_in_frames`、场景 `index/start_ms/end_ms` 和字幕时间必须为 JSON 整数且不能是布尔值；视频、笔记、场景和证据 ID 必须是非空字符串。`1080.0` 即使数值等于 `1080` 也属于无效契约。
+
+## Voiceover manifest: `xhs-voiceover-manifest/v1`
+
+`import_voiceover.py init` 从一份完整有效的 `xhs-video/v1` 生成清单。`source_ir_sha256`、视频/场景顺序、`narration`、`narration_sha256` 和 cue 文本由工具绑定，用户只填写来源、权利基础、WAV 文件与采样点：
+
+```json
+{
+  "schema": "xhs-voiceover-manifest/v1",
+  "source_ir_sha256": "sha256:<64 lowercase hex>",
+  "videos": [
+    {
+      "video_id": "note:demo-mold-001",
+      "origin": "human_recorded",
+      "rights_basis": "self_recorded",
+      "scenes": [
+        {
+          "scene_id": "note:demo-mold-001:scene-01-hook",
+          "narration": "与 v1 完全一致的口播",
+          "narration_sha256": "sha256:<64 lowercase hex>",
+          "file": "audio/video-001/scene-001.wav",
+          "cues": [
+            {"text": "与 v1 字幕块完全一致", "start_sample": 0, "end_sample": 96000}
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `origin=human_recorded` 只允许 `rights_basis=self_recorded|licensed`；`origin=synthetic_ai` 只允许 `synthetic_service_terms_confirmed|licensed`。
+- `file` 必须是清单目录内的相对 POSIX 路径，不接受盘符、反斜杠、绝对路径、`..` 或符号链接逃逸。
+- 每个文件必须为 RIFF PCM s16le、48 kHz、单声道、16-bit；每条 cue 至少 1200 ms，顺序不重叠，且阅读速度不超过每秒 10 个显示单位。
+- cue 文本和拼接结果必须逐字等于 v1 字幕和口播；采样点由用户对听填写，工具不做转写或语义对齐。
+
+## Voiced Video IR: `xhs-video/v2`
+
+`build` 以音频采样数重新建立 30 fps 时间轴，生成内容寻址的音频资产、逐视频 props 和 `video-projects.json`：
+
+```json
+{
+  "schema": "xhs-video/v2",
+  "source": {"schema": "xhs-video/v1", "sha256": "sha256:<64 lowercase hex>"},
+  "videos": [
+    {
+      "profile": "xhs-vertical-1080x1920-v2-voiced",
+      "meta": {
+        "audio": {
+          "kind": "external_voiceover",
+          "layout": "per_scene",
+          "origin": "human_recorded",
+          "reviewed": true,
+          "rights_basis": "self_recorded",
+          "rights_confirmed": true,
+          "disclosure_required": false,
+          "disclosure_text": null,
+          "signal_check": {"kind": "basic_pcm_activity", "audibility_verified": false},
+          "attestation": {
+            "kind": "user_declared_review_and_rights",
+            "source_ir_sha256": "sha256:<source digest>",
+            "manifest_sha256": "sha256:<manifest digest>",
+            "video_id": "note:demo-mold-001",
+            "origin": "human_recorded",
+            "rights_basis": "self_recorded",
+            "audio_sha256": ["sha256:<scene audio digest>"],
+            "audio_reviewed": true,
+            "audio_rights_confirmed": true,
+            "license_verified_by_tool": false,
+            "sha256": "sha256:<binding digest>"
+          }
+        }
+      },
+      "scenes": [
+        {
+          "start_frame": 0,
+          "end_frame": 180,
+          "audio": {
+            "kind": "external_voiceover_clip",
+            "path": "assets/voiceover/<audio-sha256>.wav",
+            "sha256": "sha256:<audio digest>",
+            "narration_sha256": "sha256:<narration digest>",
+            "codec": "pcm_s16le",
+            "sample_rate_hz": 48000,
+            "channels": 1,
+            "bits_per_sample": 16,
+            "sample_count": 288000
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+示例只展示 v2 新增或改写的字段；视频、场景、字幕、证据和附录仍保留 v1 的完整字段并接受严格未知字段检查。每场帧数是 `ceil(sample_count / 1600)`，总时长仍须为 60–90 秒。
+
+`reviewed=true`、`rights_confirmed=true` 以及 attestation 来自两个独立 CLI 确认参数，只记录用户声明。基础信号门只确认存在超过近静音阈值的有限 PCM 活动；它不验证可听性、语言、内容、音画同步、声音自然度或使用权，因此固定保留 `audibility_verified=false` 与 `license_verified_by_tool=false`。工具不生成音频、不调用 TTS，也不读取 API Key。
+
+合成来源必须设置 `origin=synthetic_ai`、匹配的 `rights_basis`，并在 hook 与 disclosure 场景携带结构化 `synthetic_audio` notice；渲染首帧使用唯一标签“旁白由AI合成”，不得在 hook 字幕中重复、否定或冲突。v2 MP4 校验要求一条 H.264 视频流与一条 AAC 48 kHz 单声道音轨，音频、视频与期望帧时长误差不超过 0.2 秒。
+
+清单构建持有同级排他锁并写入暂存目录；所有视频和音频通过后才整体替换旧输出。失败保留上一套完整目录。`render_video.py --project-dir <dir> --mp4` 会重验 IR，并要求每个视频恰好对应一个根目录内内容完全一致的 props；输出为同 stem `.mp4`。批处理同样先锁定全部目标、渲染和探测全部暂存文件，再整体替换；清理失败会显式产生 warning，不会把已经安装的新成片回滚成旧版本。
+
+## Publish Check: `xhs-publish-check/v1`
+
+发布前检必须确定一个精确的 `profile_id` 和最终 `ai_content_kinds` 集合。调用方声明画面或修改类型；v2 的 `synthetic_ai` 来源会确定性补入 `synthetic_audio`，再与显式类型取并集。集合按 `none`、`assistive_text_only`、`synthetic_visual`、`synthetic_audio`、`realistic_altered` 的稳定顺序输出；`none` 与其他类型互斥，`assistive_text_only` 与三个合成媒体类型互斥，多个合成媒体类型可以并存并取披露义务并集。
+
+每个 profile 来源都记录 `authority`、`evidence_status`、`checked_at` 与 `applies_to`。`evidence_status` 只允许 `supports`、`no_public_value`、`conflicting`、`project_policy`；公开官方资料没有数值时必须保留 `unknown/manual`。`cross_platform_master_60` 是项目母版策略，不是平台发布资格。
+
+来源身份不仅按大厂域名判断；每个 `profile_id + source_id` 都绑定明确的 HTTPS 主机、完整页面路径和 query 策略。路径必须精确相等；抖音用户协议必须且只能携带 `id=6773906068725565448`，YouTube 帮助页只允许零个或一个非空 `hl` 参数，其他当前内置来源默认要求空 query。相邻数字、附加子路径、`-user` 后缀、未知或额外 query、其他平台官方页面、同域随机用户路径或未登记 source ID 都必须拒绝。
+
+v1 只能证明静音素材，所以所有要求实际音轨的 `hard` 或 `project_gate` 都必须阻断。v2 会重新读取清单目录内的 WAV，校验路径、格式、哈希、采样数和基础信号后记录技术存在性；但听感和许可证仍是人工项。`platform_setting`、目标账号预览和未知官方数值只能产生 `needs_review`，不能伪造为已完成。
+
+`actual.platform_disclosure_required` 是三态值：任一已知义务为真时是 `true`；没有已知真值但仍有待判定义务时是 `null`；全部明确无需时才是 `false`。`actual.determination_pending` 单独说明义务集合中是否仍含待判定项。
+
+中国首帧 AI 标签从一条完整 canonical 字幕解析为 `first_frame_declared_kinds`；`expected_first_frame_labels` 给出当前 kind 组合允许的有限标签。声明集合必须与 required kinds 完全相等；少报、多报以及两条同时从 0 ms 开始的标签字幕都会失败关闭。
