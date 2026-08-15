@@ -1,6 +1,6 @@
 ---
 name: xhs-question-solutions
-description: 筛选小红书候选笔记中的真实问题帖，完整分类评论区的直接答案、亲历经验、风险、反例、猜测和操纵信号，并生成带数据覆盖、主张账本及原评论证据的可执行方案。用于搜索或分析小红书问题帖、整理评论经验、比较冲突答案、审查评论可信度，或把小红书 JSON/JSONL 转成报告、卡片笔记和短视频脚本时。
+description: 筛选小红书候选笔记中的真实问题帖，完整分类评论区的直接答案、亲历经验、风险、反例、猜测和操纵信号，并生成带数据覆盖、主张账本及原评论证据的可执行方案。用于搜索或分析小红书问题帖、整理评论经验、比较冲突答案、审查评论可信度，或把小红书 JSON/JSONL 转成报告、HTML/PNG 图文卡片和短视频脚本时。
 ---
 
 # 小红书问题帖解答
@@ -46,6 +46,14 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
    python scripts/render_result.py <canonical.jsonl> <analysis.json> <output.md> --format xhs-cards
    python scripts/render_result.py <canonical.jsonl> <analysis.json> <output.md> --format short-video
    ```
+8. 需要可发布图文时，不解析 Markdown 标题；直接从同一份已校验数据生成版本化卡片 IR 和自包含 HTML：
+
+   ```text
+   python scripts/render_card_images.py <canonical.jsonl> <analysis.json> <output-dir> --style morandi
+   python scripts/render_card_images.py <canonical.jsonl> <analysis.json> <output-dir> --style morandi --png
+   ```
+
+   HTML 无额外依赖。`--png` 仅在已检测到 Node.js、Playwright 与 Chromium/Edge/Chrome 时启用；不要自动安装。PNG 同时包含主卡和分页证据附录。可选风格：`morandi`、`academic`、`dark`、`mint`、`sunset`、`bw`。
 
 ## 质量门槛
 
@@ -56,6 +64,8 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
 - 点赞只表示关注度。相关回复、复制评论或转述不得被描述为多个独立来源。
 - 医疗、法律、金融、人身安全和化学品操作默认高风险；没有权威复核时将发布状态设为 `needs_review`。
 - 发布到社交平台时披露 AI 辅助、数据范围、截断情况和利益关系；标题可以优化，但不得改变证据结论。
+- 图文主卡数量为 `7 + 方案步骤数`，每个步骤独占一张；完整证据只进入独立附录。PNG 必须为 1080×1440，真实字体测量仍溢出时停止并报告卡片 ID，不得裁字或继续缩成不可读小字；整套成功后才替换旧图，失败时保留上一套完整输出。
+- 发布前至少人工查看封面、内容最密动作卡、风险卡和末卡，确认页码、证据、风险提示、安全互动及手机端字号。
 
 ## 失败与降级
 
@@ -64,6 +74,7 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
 - 只有单一亲历：写成“一个评论个案”，不要写成普遍有效。
 - 外部事实无法复核：放入待验证，不用于把高风险内容标为可发布。
 - 脚本不可运行：说明“未运行确定性校验”，不把结果称为已验证。
+- PNG 依赖不可用：交付自包含 HTML 和卡片 IR，明确说明“未生成 PNG”；不得暗示截图已完成。
 
 ## 边界
 

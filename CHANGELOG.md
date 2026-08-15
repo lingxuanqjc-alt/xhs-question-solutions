@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0] - 2026-08-15
+
+### Added
+
+- Versioned `xhs-card-deck/v1` intermediate representation shared by Markdown and image renderers.
+- Self-contained 1080×1440 HTML card decks, six visual themes and optional Playwright PNG capture.
+- Paginated evidence-appendix PNG cards so published carousels can expose the canonical comment excerpts they reference.
+- Browser-measured overflow failure, transactional whole-deck replacement, HTML escaping and deterministic output naming.
+
+### Changed
+
+- Card count now follows `7 + solution steps`, so every action keeps its evidence, applicability, verification and stop conditions on one card.
+- Full evidence excerpts live in a separate appendix instead of overloading the disclosure card.
+- Synthetic/high-risk disclosure moves to the cover; reader-facing metadata, single-case wording and the final safety question are publication-oriented.
+- Unsafe excerpts carry a standalone warning in the appendix, and missing like counts are shown as unknown instead of silently rendered blank.
+
 ## [0.2.0] - 2026-08-15
 
 ### Added

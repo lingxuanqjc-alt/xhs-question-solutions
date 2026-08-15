@@ -33,6 +33,11 @@ jobs:
           trap 'rm -rf "$install_root"' EXIT
           sh installers/install.sh --root "$install_root"
           test -f "$install_root/.agents/skills/xhs-question-solutions/SKILL.md"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/assets/card-deck.css"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/render_card_images.py"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/capture_cards.cjs"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/package.json"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/package-lock.json"
           wrapper="$install_root/.claude/skills/xhs-question-solutions/SKILL.md"
           test -f "$wrapper"
           grep -F '../../../.agents/skills/xhs-question-solutions/SKILL.md' "$wrapper"
@@ -49,6 +54,20 @@ jobs:
           if (-not (Test-Path -LiteralPath $core -PathType Leaf)) {
             throw "Core skill was not installed at $core"
           }
+          $requiredCoreFiles = @(
+            "assets/card-deck.css",
+            "scripts/render_card_images.py",
+            "scripts/capture_cards.cjs",
+            "package.json",
+            "package-lock.json"
+          )
+          $coreRoot = Split-Path -Parent $core
+          foreach ($relativePath in $requiredCoreFiles) {
+            $installedFile = Join-Path $coreRoot $relativePath
+            if (-not (Test-Path -LiteralPath $installedFile -PathType Leaf)) {
+              throw "Installed skill is missing $installedFile"
+            }
+          }
           if (-not (Test-Path -LiteralPath $wrapper -PathType Leaf)) {
             throw "Claude wrapper was not installed at $wrapper"
           }
@@ -59,3 +78,17 @@ jobs:
           if (Test-Path -LiteralPath $duplicatedScripts) {
             throw "Claude installation duplicated the core skill scripts."
           }
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install pinned optional image renderer
+        run: npm ci --prefix .agents/skills/xhs-question-solutions --ignore-scripts --no-audit --no-fund
+
+      - name: Render and verify real PNG cards
+        run: |
+          python -X utf8 .agents/skills/xhs-question-solutions/scripts/normalize_xhs_export.py examples/sample-input.json build/ci/sample.jsonl
+          python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_card_images.py build/ci/sample.jsonl examples/sample-analysis.json build/ci/cards --style morandi --png
+          python -X utf8 -c "from pathlib import Path; files=list(Path('build/ci/cards').rglob('*.png')); assert len(files)==13, len(files)"

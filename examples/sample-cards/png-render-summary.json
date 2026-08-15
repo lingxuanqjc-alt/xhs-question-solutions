@@ -1,0 +1,116 @@
+{
+  "backend": "playwright",
+  "decks": [
+    {
+      "cards": [
+        {
+          "card_id": "demo-mold-001:01",
+          "filename": "01-cover.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "cover",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:02",
+          "filename": "02-scope.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "scope",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:03",
+          "filename": "03-action.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "action",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:04",
+          "filename": "04-action.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "action",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:05",
+          "filename": "05-action.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "action",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:06",
+          "filename": "06-experience.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "experience",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:07",
+          "filename": "07-counterexample.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "counterexample",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:08",
+          "filename": "08-conflicts_risks.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "conflicts_risks",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:09",
+          "filename": "09-unknowns.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "unknowns",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:10",
+          "filename": "10-disclosure.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "disclosure",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:evidence:01",
+          "filename": "11-evidence_appendix.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "evidence_appendix",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:evidence:02",
+          "filename": "12-evidence_appendix.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "evidence_appendix",
+          "width": 1080
+        },
+        {
+          "card_id": "demo-mold-001:evidence:03",
+          "filename": "13-evidence_appendix.png",
+          "fit": 1,
+          "height": 1440,
+          "role": "evidence_appendix",
+          "width": 1080
+        }
+      ],
+      "input": "demo-mold-001-21e64ed3.html",
+      "output": "demo-mold-001-21e64ed3"
+    }
+  ],
+  "style": "morandi"
+}

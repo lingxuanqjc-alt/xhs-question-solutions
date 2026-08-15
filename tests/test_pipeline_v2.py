@@ -1,11 +1,11 @@
-import json, sys, unittest
+import json, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1] / ".agents/skills/xhs-question-solutions/scripts"
 sys.path.insert(0, str(SCRIPTS))
 from normalize_xhs_export import normalize, number
 from validate_result import validate
-from render_result import render
+from render_result import build_card_decks, render, render_card_decks_markdown, serialize_card_decks_json
 
 
 def canonical(two=False):
@@ -60,6 +60,13 @@ class NormalizeTests(unittest.TestCase):
 
 class ValidateTests(unittest.TestCase):
     def test_complete_analysis_passes(self): self.assertEqual([], validate(canonical(True), good(True)))
+    def test_social_title_is_optional_but_strict_when_present(self):
+        self.assertEqual([], validate(canonical(), good()))
+        valid = good(); valid["posts"][0]["social_title"] = "墙面反复发霉怎么办？"; self.assertEqual([], validate(canonical(), valid))
+        invalid_values = [123, "太短", "长" * 29, "必看保证根治墙面发霉方法"]
+        for value in invalid_values:
+            analysis = good(); analysis["posts"][0]["social_title"] = value
+            with self.subTest(value=value): self.assertTrue(any("social_title" in error for error in validate(canonical(), analysis)))
     def test_every_candidate_must_be_classified_once(self): self.assertTrue(any("candidate" in x for x in validate(canonical(True), good())))
     def test_every_comment_must_be_classified_once(self):
         a = good(); a["posts"][0]["comments"].pop(); self.assertTrue(any("exactly once" in x for x in validate(canonical(), a)))
@@ -118,7 +125,7 @@ class RenderTests(unittest.TestCase):
         a = good(); a["posts"][0]["comments"][0]["quote"] = "伪造引文"; out = render(canonical(), a); self.assertIn("先重启", out); self.assertNotIn("伪造引文", out)
     def test_all_formats_show_coverage_and_thread(self):
         for fmt in ("report", "xhs-cards", "short-video"):
-            out = render(canonical(), good(), fmt); self.assertIn("评论覆盖：2/2", out); self.assertIn("thread `c1`", out)
+            out = render(canonical(), good(), fmt); self.assertIn("页面显示 2 条 · 实际采集 2 条", out); self.assertIn("thread `c1`", out)
     def test_report_contains_decision_sections_and_exclusions(self):
         out = render(canonical(True), good(True));
         for heading in ("一句话答案", "可执行步骤", "主张账本", "风险与未知", "排除的候选"): self.assertIn(heading, out)
@@ -130,13 +137,13 @@ class RenderTests(unittest.TestCase):
         a = good(); solution = a["posts"][0]["solution"]; solution["constraints"] = ["边界甲", "边界乙"]; solution["unknowns"] = ["未知甲", "未知乙"]
         out = render(canonical(), a)
         for item in ("- 边界甲", "- 边界乙", "- 未知甲", "- 未知乙"): self.assertIn(item, out)
-    def test_cards_are_nine_disclosed_cards(self):
-        out = render(canonical(), good(), "xhs-cards"); self.assertEqual(9, out.count("## 卡片 ")); self.assertIn("AI 辅助", out)
+    def test_cards_are_dynamic_and_disclosed(self):
+        out = render(canonical(), good(), "xhs-cards"); self.assertEqual(8, out.count("## 卡片 ")); self.assertIn("AI 辅助", out)
         self.assertIn("利益关系：未知，发布前人工确认", out)
-        self.assertIn("停止：无法启动", out)
+        self.assertIn("- **停止：** 无法启动", out)
     def test_card_four_separates_action_verification_and_stop(self):
         a = good(); a["posts"][0]["solution"]["steps"].append({"text": "复查", "claim_ids": ["cl1"], "evidence_comment_ids": ["c2"], "applies_when": ["仍有问题"], "verification": "记录结果", "stop_conditions": ["故障加重"]})
-        out = render(canonical(), a, "xhs-cards"); self.assertIn("### 动作 2", out); self.assertIn("- 动作：复查", out); self.assertIn("- 验证：记录结果", out); self.assertIn("- 停止：故障加重", out)
+        out = render(canonical(), a, "xhs-cards"); self.assertIn("## 卡片 4｜第 2 步", out); self.assertIn("复查", out); self.assertIn("- **验证：** 记录结果", out); self.assertIn("- **停止：** 故障加重", out)
     def test_video_is_timed_storyboard(self):
         out = render(canonical(), good(), "short-video"); self.assertIn("| 时段 | 画面 | 口播 | 字幕 | 证据 |", out); self.assertIn("80–90 秒", out)
     def test_video_splits_steps_without_truncating_sentences(self):
@@ -158,7 +165,115 @@ class RenderTests(unittest.TestCase):
         analysis = json.loads((root / "examples/sample-analysis.json").read_text(encoding="utf-8"))
         rows = normalize(payload); self.assertEqual([], validate(rows, analysis))
         report = render(rows, analysis, "report"); cards = render(rows, analysis, "xhs-cards"); video = render(rows, analysis, "short-video")
-        self.assertIn("评论覆盖：9/12", report); self.assertIn("排除的候选", report); self.assertEqual(9, cards.count("## 卡片 ")); self.assertIn("80–90 秒", video)
+        self.assertIn("页面显示 12 条 · 实际采集 9 条", report); self.assertIn("排除的候选", report); self.assertEqual(10, cards.count("## 卡片 ")); self.assertIn("80–90 秒", video)
+    def test_card_ir_has_versioned_dynamic_structure(self):
+        deck = build_card_decks(canonical(), good())["decks"][0]
+        self.assertEqual(8, len(deck["cards"]))
+        self.assertEqual(list(range(1, 9)), [card["index"] for card in deck["cards"]])
+        self.assertEqual(["cover", "scope", "action", "experience", "counterexample", "conflicts_risks", "unknowns", "disclosure"], [card["role"] for card in deck["cards"]])
+    def test_each_action_card_keeps_all_operational_evidence(self):
+        action = next(card for card in build_card_decks(canonical(), good())["decks"][0]["cards"] if card["role"] == "action")
+        fields = {block["label"]: block["value"] for block in action["blocks"] if block["type"] == "field"}
+        self.assertEqual(["c1"], action["evidence_comment_ids"])
+        self.assertEqual({"证据", "适用", "验证", "停止"}, set(fields))
+    def test_single_experience_is_not_presented_as_effective(self):
+        card = next(card for card in build_card_decks(canonical(), good())["decks"][0]["cards"] if card["role"] == "experience")
+        self.assertEqual("一个亲历个案", card["title"]); self.assertNotIn("有效", card["title"])
+        self.assertTrue(any(block.get("tone") == "caution" and "不可外推" in block.get("text", "") for block in card["blocks"]))
+    def test_small_counterexample_card_keeps_non_extrapolation_notice(self):
+        analysis = good(); analysis["posts"][0]["comments"][0]["category"] = "counterexample"
+        card = next(card for card in build_card_decks(canonical(), analysis)["decks"][0]["cards"] if card["role"] == "counterexample")
+        self.assertTrue(any(block.get("tone") == "caution" and "对照场景" in block.get("text", "") for block in card["blocks"]))
+    def test_social_title_is_used_only_for_card_cover(self):
+        analysis = good(); post = analysis["posts"][0]; post["question"] = "这是用于报告和视频的完整问题描述吗？"; post["social_title"] = "墙面反复发霉怎么办？"
+        card_decks = build_card_decks(canonical(), analysis)
+        self.assertEqual("墙面反复发霉怎么办？", card_decks["decks"][0]["cards"][0]["title"])
+        self.assertIn(post["question"], render(canonical(), analysis, "report")); self.assertIn(post["question"], render(canonical(), analysis, "short-video"))
+        self.assertNotIn(post["question"], render_card_decks_markdown(card_decks))
+    def test_synthetic_high_risk_cover_and_scope_are_reader_facing(self):
+        root = Path(__file__).resolve().parents[1]
+        rows = normalize(json.loads((root / "examples/sample-input.json").read_text(encoding="utf-8")))
+        analysis = json.loads((root / "examples/sample-analysis.json").read_text(encoding="utf-8"))
+        cards = build_card_decks(rows, analysis)["decks"][0]["cards"]
+        cover = " ".join(block["text"] for block in cards[0]["blocks"] if "text" in block)
+        scope = json.dumps(cards[1], ensure_ascii=False)
+        self.assertIn("合成演示 · 高风险 · 发布前人工复核", cover); self.assertIn("合成演示数据", scope); self.assertIn("达到采集上限", scope)
+        self.assertIn("页面显示 12 条 · 实际采集 9 条", scope)
+        for raw in ("synthetic_fixture", "reached_limit", "2026-08-15T10:00:00+08:00"): self.assertNotIn(raw, scope)
+    def test_unknown_page_total_is_stated_without_a_ratio(self):
+        rows = canonical(); rows[0]["capture"]["comments_total"] = 0
+        scope = next(card for card in build_card_decks(rows, good())["decks"][0]["cards"] if card["role"] == "scope")
+        text = json.dumps(scope, ensure_ascii=False); self.assertIn("实际采集 2 条 · 页面总量未知", text); self.assertNotIn("2/0", text)
+    def test_high_risk_conflict_labels_unsafe_and_warning_positions(self):
+        root = Path(__file__).resolve().parents[1]
+        rows = normalize(json.loads((root / "examples/sample-input.json").read_text(encoding="utf-8")))
+        analysis = json.loads((root / "examples/sample-analysis.json").read_text(encoding="utf-8"))
+        card = next(card for card in build_card_decks(rows, analysis)["decks"][0]["cards"] if card["role"] == "conflicts_risks")
+        self.assertEqual({"type": "notice", "tone": "warning", "text": "以下为评论中的冲突观点，不是操作建议；高风险内容待权威复核"}, card["blocks"][0])
+        bullets = [block["text"] for block in card["blocks"] if block["type"] == "bullet"]
+        self.assertTrue(any(text.startswith("未核验高风险观点：可以直接喷酒精") for text in bullets))
+        self.assertTrue(any(text.startswith("风险提醒：大面积使用存在风险") for text in bullets))
+        self.assertFalse(any(text.startswith("可以直接喷酒精") for text in bullets))
+        self.assertNotIn("\n- 可以直接喷酒精", render_card_decks_markdown({"schema": "xhs-card-deck/v1", "decks": [build_card_decks(rows, analysis)["decks"][0]]}))
+    def test_disclosure_is_brief_with_exactly_one_safety_cta(self):
+        card = next(card for card in build_card_decks(canonical(), good())["decks"][0]["cards"] if card["role"] == "disclosure")
+        text = " ".join(block.get("text", "") for block in card["blocks"])
+        self.assertEqual(1, text.count("？")); self.assertIn("你目前能确认哪一项", text); self.assertEqual([], card["evidence_comment_ids"]); self.assertNotIn("完整证据", text)
+    def test_disclosure_cta_uses_first_unknown_without_dangerous_prompt(self):
+        analysis = good(); analysis["posts"][0]["solution"]["unknowns"] = ["现场通风条件未知。", "其他条件未提供。"]
+        card = next(card for card in build_card_decks(canonical(), analysis)["decks"][0]["cards"] if card["role"] == "disclosure")
+        cta = next(block["text"] for block in card["blocks"] if block.get("tone") == "cta")
+        self.assertEqual("关于「现场通风条件」，你目前能确认哪一项？", cta); self.assertNotIn("未知", cta); self.assertNotIn("未提供", cta); self.assertEqual(1, cta.count("？")); self.assertNotIn("尝试", cta)
+    def test_markdown_is_only_a_serialization_of_card_ir(self):
+        card_decks = build_card_decks(canonical(), good())
+        self.assertEqual(render_card_decks_markdown(card_decks), render(canonical(), good(), "xhs-cards"))
+        self.assertIn("# 附录｜完整证据索引", render_card_decks_markdown(card_decks))
+    def test_card_ir_is_deterministic_and_rejects_unknown_schema(self):
+        first = serialize_card_decks_json(build_card_decks(canonical(), good()))
+        second = serialize_card_decks_json(build_card_decks(canonical(), good()))
+        self.assertEqual(first, second); self.assertEqual("xhs-card-deck/v1", json.loads(first)["schema"])
+        with self.assertRaisesRegex(ValueError, "unsupported"): render_card_decks_markdown({"schema": "xhs-card-deck/v2"})
+    def test_appendix_evidence_comes_only_from_canonical(self):
+        analysis = good(); analysis["posts"][0]["comments"][0]["quote"] = "模型伪造短摘"
+        evidence = build_card_decks(canonical(), analysis)["decks"][0]["appendix"]["evidence"]
+        self.assertEqual(["c1", "c2"], [item["comment_id"] for item in evidence]); self.assertEqual("先重启", evidence[0]["excerpt"]); self.assertNotIn("模型伪造", json.dumps(evidence, ensure_ascii=False))
+    def test_unsafe_appendix_entry_carries_a_standalone_warning(self):
+        analysis = good(); analysis["posts"][0]["comments"][0]["risk_flags"] = ["unsafe_advice"]
+        solution = analysis["posts"][0]["solution"]; solution["risk_level"] = "high"; solution["publish_status"] = "needs_review"
+        deck = build_card_decks(canonical(), analysis)["decks"][0]
+        evidence = deck["appendix"]["evidence"][0]
+        self.assertEqual("未核验高风险观点，不是操作建议", evidence["safety_warning"])
+        self.assertEqual("直接答案", evidence["category_label"])
+        markdown = render_card_decks_markdown({"schema": "xhs-card-deck/v1", "decks": [deck]})
+        entry = next(line for line in markdown.splitlines() if "`c1`" in line)
+        self.assertIn("未核验高风险观点，不是操作建议", entry); self.assertIn("先重启", entry)
+    def test_missing_likes_are_explicitly_unknown_in_ir_and_markdown(self):
+        rows = canonical(); del next(row for row in rows if row.get("comment_id") == "c1")["likes"]
+        deck = build_card_decks(rows, good())["decks"][0]
+        evidence = deck["appendix"]["evidence"][0]
+        self.assertIsNone(evidence["likes"]); self.assertEqual("赞数未知", evidence["likes_label"])
+        markdown = render_card_decks_markdown({"schema": "xhs-card-deck/v1", "decks": [deck]})
+        self.assertIn("｜赞数未知｜", markdown); self.assertNotIn("｜赞｜", markdown)
+        self.assertIn("｜赞数未知｜", render(rows, good(), "report"))
+    def test_multiple_question_posts_become_separate_decks(self):
+        rows = normalize({"notes": [{"id": "a", "comments": [{"id": "a1", "content": "做A"}]}, {"id": "b", "comments": [{"id": "b1", "content": "做B"}]}]})
+        def post(note_id, comment_id):
+            return {"note_id": note_id, "is_question": True, "question": f"{note_id}怎么做", "question_type": "how_to", "confidence": .9,
+                    "comments": [{"comment_id": comment_id, "category": "direct_answer", "claim": "执行", "confidence": .8, "evidence_quality": "moderate", "risk_flags": []}],
+                    "solution": {"summary": "执行并验证", "risk_level": "low", "publish_status": "ready", "claims": [{"claim_id": f"claim-{note_id}", "kind": "community_advice", "status": "supported", "text": "执行", "evidence_comment_ids": [comment_id], "external_sources": []}],
+                                 "steps": [{"text": "执行", "claim_ids": [f"claim-{note_id}"], "evidence_comment_ids": [comment_id], "applies_when": ["条件满足"], "verification": "结果出现", "stop_conditions": ["结果异常"]}], "constraints": [], "conflicts": [], "unknowns": []}}
+        card_decks = build_card_decks(rows, {"posts": [post("a", "a1"), post("b", "b1")]})
+        self.assertEqual(["note:a", "note:b"], [deck["deck_id"] for deck in card_decks["decks"]]); self.assertEqual(8, len(card_decks["decks"][0]["cards"])); self.assertEqual(8, len(card_decks["decks"][1]["cards"]))
+    def test_cli_can_write_structured_sidecar_without_changing_markdown(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temp:
+            temp = Path(temp); canonical_path, analysis_path = temp / "canonical.jsonl", temp / "analysis.json"
+            canonical_path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in canonical()), encoding="utf-8")
+            analysis_path.write_text(json.dumps(good(), ensure_ascii=False), encoding="utf-8")
+            output, sidecar = temp / "cards.md", temp / "cards.json"
+            subprocess.run([sys.executable, "-X", "utf8", str(SCRIPTS / "render_result.py"), str(canonical_path), str(analysis_path), str(output), "--format", "xhs-cards", "--structured-output", str(sidecar)], check=True, cwd=root, capture_output=True, text=True)
+            self.assertEqual("xhs-card-deck/v1", json.loads(sidecar.read_text(encoding="utf-8"))["schema"])
+            self.assertEqual(render(canonical(), good(), "xhs-cards"), output.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__": unittest.main()

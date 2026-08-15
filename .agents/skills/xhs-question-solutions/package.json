@@ -1,0 +1,12 @@
+{
+  "name": "xhs-question-solutions-card-renderer",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Optional browser backend for deterministic Xiaohongshu card screenshots",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright-core": "1.62.1"
+  }
+}

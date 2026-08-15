@@ -32,6 +32,7 @@
       "note_id": "n1",
       "is_question": true,
       "question": "发帖者真正要解决的问题",
+      "social_title": "墙面反复发霉怎么办？",
       "question_type": "how_to",
       "confidence": 0.92,
       "comments": [
@@ -92,6 +93,8 @@
 ```
 
 ## 枚举
+
+`social_title` 是可选的社交封面标题，只影响卡片封面，不替代 `question`。提供时必须是单行字符串，包含 8–28 个非空白可见字符；不得使用“震惊”“必看”“百分百”“根治”“保证”等无证据承诺。缺失时封面回退为 `question`。
 
 - `question_type`：`how_to`、`choice`、`diagnosis`、`recommendation`、`experience_request`、`fact_check`、`other`
 - `category`：`direct_answer`、`firsthand_experience`、`risk_warning`、`counterexample`、`clarifying_question`、`speculation`、`off_topic`

@@ -7,6 +7,8 @@
 
 > English: A cross-agent skill that turns Xiaohongshu question posts and comment evidence into traceable, actionable solutions.
 
+![由示例证据确定性生成的小红书卡片封面](examples/sample-cards/demo-mold-001-21e64ed3/01-cover.png)
+
 ## 它解决的不是“总结”，而是“能不能信、怎么执行”
 
 | 普通评论总结 | xhs-question-solutions |
@@ -39,6 +41,7 @@ Claude Code：
 - [结构化分析](examples/sample-analysis.json)
 - [证据报告](examples/sample-report.md)
 - [小红书卡片稿](examples/sample-xhs-cards.md)
+- [实际渲染的 1080×1440 卡片（10 张主卡 + 3 张证据附录）](examples/sample-cards/demo-mold-001-21e64ed3/)
 - [短视频分镜](examples/sample-short-video.md)
 
 ## 三层可信链路
@@ -48,7 +51,8 @@ flowchart LR
     A["候选笔记与评论"] --> B["确定性规范化\n匿名化·去重·回复树·覆盖率"]
     B --> C["Agent 语义判断\n问题帖·评论类别·主张账本"]
     C --> D["确定性校验\n完整分类·同帖引用·高风险门槛"]
-    D --> E["读者版输出\n报告·图文卡片·短视频分镜"]
+    D --> E["版本化卡片 IR\n同一事实源·不解析标题"]
+    E --> F["读者版输出\n报告·HTML/PNG 卡片·短视频分镜"]
 ```
 
 模型只负责需要判断的部分：问题识别、分类、主张提取和摘要。ID 路由、去重、完整性、证据引用和渲染由标准库脚本处理。
@@ -68,7 +72,7 @@ flowchart LR
 ## 输出形式
 
 - `report`：一句话答案、3–5 步方案、主张账本、冲突、未知项和完整证据索引。
-- `xhs-cards`：7–9 张答案前置的图文卡片文案，保留数据范围、反例与 AI 辅助披露。
+- `xhs-cards`：通常 8–12 张图文卡片；每个方案步骤独占一张，完整证据放独立附录。可生成 Markdown、结构化 IR、自包含 HTML 和可选 PNG。
 - `short-video`：60–90 秒分镜、口播和字幕，步骤与评论 ID 同屏。
 
 标题、封面和节奏可以针对平台调整，但所有格式共享同一个已校验的 `analysis.json`，不会为了传播效果修改证据结论。
@@ -102,10 +106,25 @@ bash installers/install.sh
 python -X utf8 .agents/skills/xhs-question-solutions/scripts/normalize_xhs_export.py examples/sample-input.json build/sample.jsonl
 python -X utf8 .agents/skills/xhs-question-solutions/scripts/validate_result.py build/sample.jsonl examples/sample-analysis.json
 python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_result.py build/sample.jsonl examples/sample-analysis.json build/report.md --format report
+python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_card_images.py build/sample.jsonl examples/sample-analysis.json build/cards --style morandi
 python -X utf8 -m unittest discover -s tests -v
 ```
 
 GitHub Actions 会在 Windows 与 Ubuntu 上运行测试，并实际验证两个安装器。
+
+生成 PNG 是显式可选能力。先确认 Node.js、Playwright 以及 Chromium、Edge 或 Chrome 已存在，再运行：
+
+```powershell
+python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_card_images.py build/sample.jsonl examples/sample-analysis.json build/cards --style morandi --png
+```
+
+如果只缺少 Node 模块，可由你明确决定后安装仓库内锁定版本：
+
+```powershell
+npm ci --prefix .agents/skills/xhs-question-solutions --ignore-scripts --no-audit --no-fund
+```
+
+脚本不会自动安装浏览器或依赖。缺少 PNG 后端时，自包含 HTML 与 `xhs-card-deck/v1` IR 仍会保留；不能据此声称 PNG 已生成。PNG 输出包含主卡和分页证据附录。截图阶段逐张测量真实布局，任何卡片在最小可读缩放仍溢出都会返回对应 `card_id`，不会静默裁字；新图片全部通过后才替换上一套，失败不会留下半套成品。
 
 ## 隐私、真实性与安全边界
 
@@ -119,10 +138,10 @@ GitHub Actions 会在 Windows 与 Ubuntu 上运行测试，并实际验证两个
 ## 项目结构
 
 ```text
-.agents/skills/xhs-question-solutions/   Agent Skill、脚本与按需 references
+.agents/skills/xhs-question-solutions/   Agent Skill、脚本、卡片样式与按需 references
 .claude/skills/xhs-question-solutions/   Claude Code 兼容入口
 tests/                                   意图驱动的确定性测试
-examples/                                完全虚构的输入、分析和三种输出
+examples/                                完全虚构的输入、分析、文本输出和实际 PNG 卡片
 installers/                              Windows 与 macOS/Linux 安装器
 demo/                                    项目发布视频脚本
 ```

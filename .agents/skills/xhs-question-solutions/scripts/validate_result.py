@@ -13,6 +13,7 @@ CLAIM_KINDS = {"experience_summary", "community_advice", "risk", "external_fact"
 CLAIM_STATUSES = {"supported", "contested", "needs_external_verification"}
 RISK_LEVELS = {"low", "medium", "high"}
 PUBLISH_STATUSES = {"ready", "needs_review"}
+FORBIDDEN_SOCIAL_TITLE_TERMS = {"震惊", "必看", "百分百", "根治", "保证"}
 
 
 def _supported_external(claim):
@@ -105,6 +106,15 @@ def validate(canonical, analysis):
             continue
         if not str(post.get("question", "")).strip(): errors.append(f"{note_id}: question is required")
         if post.get("question_type") not in QUESTION_TYPES: errors.append(f"{note_id}: invalid question_type {post.get('question_type')}")
+        if "social_title" in post:
+            title = post["social_title"]
+            if not isinstance(title, str): errors.append(f"{note_id}: social_title must be a string")
+            else:
+                visible_length = sum(not char.isspace() for char in title)
+                if not 8 <= visible_length <= 28: errors.append(f"{note_id}: social_title must contain 8-28 visible characters")
+                if any(char in title for char in "\r\n\t"): errors.append(f"{note_id}: social_title must be a single line")
+                forbidden = sorted(term for term in FORBIDDEN_SOCIAL_TITLE_TERMS if term in title)
+                if forbidden: errors.append(f"{note_id}: social_title contains forbidden promise: {', '.join(forbidden)}")
         expected = set(comments[note_id]); items = post.get("comments", [])
         items = items if isinstance(items, list) else []
         ids = [item.get("comment_id") for item in items]
