@@ -22,6 +22,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install pinned optional renderers
+        run: npm ci --prefix .agents/skills/xhs-question-solutions --ignore-scripts --no-audit --no-fund
+
       - name: Run standard-library tests
         run: python -m unittest discover -s tests -v
 
@@ -36,8 +44,17 @@ jobs:
           test -f "$install_root/.agents/skills/xhs-question-solutions/assets/card-deck.css"
           test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/render_card_images.py"
           test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/capture_cards.cjs"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/render_video.py"
+          test -f "$install_root/.agents/skills/xhs-question-solutions/scripts/render_video.mjs"
           test -f "$install_root/.agents/skills/xhs-question-solutions/package.json"
           test -f "$install_root/.agents/skills/xhs-question-solutions/package-lock.json"
+          source_core=".agents/skills/xhs-question-solutions"
+          installed_core="$install_root/.agents/skills/xhs-question-solutions"
+          test -d "$source_core/node_modules"
+          test ! -e "$installed_core/node_modules"
+          diff -u \
+            <(cd "$source_core" && find remotion -type f -print | sort) \
+            <(cd "$installed_core" && find remotion -type f -print | sort)
           wrapper="$install_root/.claude/skills/xhs-question-solutions/SKILL.md"
           test -f "$wrapper"
           grep -F '../../../.agents/skills/xhs-question-solutions/SKILL.md' "$wrapper"
@@ -58,6 +75,8 @@ jobs:
             "assets/card-deck.css",
             "scripts/render_card_images.py",
             "scripts/capture_cards.cjs",
+            "scripts/render_video.py",
+            "scripts/render_video.mjs",
             "package.json",
             "package-lock.json"
           )
@@ -67,6 +86,24 @@ jobs:
             if (-not (Test-Path -LiteralPath $installedFile -PathType Leaf)) {
               throw "Installed skill is missing $installedFile"
             }
+          }
+          $sourceCoreRoot = ".agents/skills/xhs-question-solutions"
+          if (-not (Test-Path -LiteralPath (Join-Path $sourceCoreRoot "node_modules") -PathType Container)) {
+            throw "npm ci did not create the source node_modules intent-test fixture."
+          }
+          if (Test-Path -LiteralPath (Join-Path $coreRoot "node_modules")) {
+            throw "Installer copied local node_modules into the installed skill."
+          }
+          $sourceRemotionRoot = Join-Path $sourceCoreRoot "remotion"
+          $installedRemotionRoot = Join-Path $coreRoot "remotion"
+          $sourceRemotionFiles = @(Get-ChildItem -LiteralPath $sourceRemotionRoot -Recurse -File | ForEach-Object {
+            [IO.Path]::GetRelativePath($sourceRemotionRoot, $_.FullName)
+          } | Sort-Object)
+          $installedRemotionFiles = @(Get-ChildItem -LiteralPath $installedRemotionRoot -Recurse -File | ForEach-Object {
+            [IO.Path]::GetRelativePath($installedRemotionRoot, $_.FullName)
+          } | Sort-Object)
+          if (Compare-Object -ReferenceObject $sourceRemotionFiles -DifferenceObject $installedRemotionFiles) {
+            throw "Installed Remotion source tree does not match the repository payload."
           }
           if (-not (Test-Path -LiteralPath $wrapper -PathType Leaf)) {
             throw "Claude wrapper was not installed at $wrapper"
@@ -79,16 +116,36 @@ jobs:
             throw "Claude installation duplicated the core skill scripts."
           }
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          package-manager-cache: false
-
-      - name: Install pinned optional image renderer
-        run: npm ci --prefix .agents/skills/xhs-question-solutions --ignore-scripts --no-audit --no-fund
-
       - name: Render and verify real PNG cards
         run: |
           python -X utf8 .agents/skills/xhs-question-solutions/scripts/normalize_xhs_export.py examples/sample-input.json build/ci/sample.jsonl
           python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_card_images.py build/ci/sample.jsonl examples/sample-analysis.json build/ci/cards --style morandi --png
           python -X utf8 -c "from pathlib import Path; files=list(Path('build/ci/cards').rglob('*.png')); assert len(files)==13, len(files)"
+
+      - name: Render three-frame H.264 composition smoke on Ubuntu
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          test -x /usr/bin/google-chrome
+          python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_video.py build/ci/sample.jsonl examples/sample-analysis.json build/ci/video
+          props=(build/ci/video/*.props.json)
+          test "${#props[@]}" -eq 1
+          node .agents/skills/xhs-question-solutions/scripts/render_video.mjs \
+            --props "${props[0]}" \
+            --output build/ci/video/composition-smoke.mp4 \
+            --browser /usr/bin/google-chrome \
+            --frame-range 0:2 \
+            > build/ci/video/composition-smoke.json
+          python -X utf8 -c "import json; from pathlib import Path; video=Path('build/ci/video/composition-smoke.mp4'); data=video.read_bytes(); summary=json.loads(Path('build/ci/video/composition-smoke.json').read_text(encoding='utf-8')); probe=summary['probe']; assert len(data)>16 and b'ftyp' in data[:64]; assert summary['codec']=='h264' and summary['rendered_frame_range']==[0,2] and summary['file_size']==len(data); assert probe['codec']=='h264' and (probe['width'],probe['height'],probe['audio_streams'])==(1080,1920,0)"
+          python -X utf8 -c "import json; from pathlib import Path; source=Path('${props[0]}'); data=json.loads(source.read_text(encoding='utf-8')); scene=data['video']['scenes'][0]; scene['narration']='W'*40; scene['captions']=[{'text':'W'*40,'startMs':200,'endMs':2700,'timestampMs':None,'confidence':None}]; Path('build/ci/video/overflow.props.json').write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')"
+          if node .agents/skills/xhs-question-solutions/scripts/render_video.mjs \
+            --props build/ci/video/overflow.props.json \
+            --output build/ci/video/overflow.mp4 \
+            --browser /usr/bin/google-chrome \
+            --frame-range 0:2 \
+            > build/ci/video/overflow.stdout 2> build/ci/video/overflow.stderr; then
+            echo "Expected caption overflow render to fail" >&2
+            exit 1
+          fi
+          grep -F 'CAPTION_OVERFLOW' build/ci/video/overflow.stderr
+          test ! -e build/ci/video/overflow.mp4

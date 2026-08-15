@@ -44,7 +44,7 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
    ```text
    python scripts/render_result.py <canonical.jsonl> <analysis.json> <output.md> --format report
    python scripts/render_result.py <canonical.jsonl> <analysis.json> <output.md> --format xhs-cards
-   python scripts/render_result.py <canonical.jsonl> <analysis.json> <output.md> --format short-video
+   python scripts/render_result.py <canonical.jsonl> <analysis.json> <output.md> --format short-video --structured-output <video.json>
    ```
 8. 需要可发布图文时，不解析 Markdown 标题；直接从同一份已校验数据生成版本化卡片 IR 和自包含 HTML：
 
@@ -54,6 +54,16 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
    ```
 
    HTML 无额外依赖。`--png` 仅在已检测到 Node.js、Playwright 与 Chromium/Edge/Chrome 时启用；不要自动安装。PNG 同时包含主卡和分页证据附录。可选风格：`morandi`、`academic`、`dark`、`mint`、`sunset`、`bw`。
+9. 需要视频项目或 MP4 时，先在 Skill 根目录安装锁定依赖，再生成确定性的 `xhs-video/v1`：
+
+   ```text
+   npm ci --ignore-scripts --no-audit --no-fund
+   python scripts/render_video.py <canonical.jsonl> <analysis.json> <output-dir>
+   python scripts/render_video.py <canonical.jsonl> <analysis.json> <output-dir> --mp4 --browser <chrome-or-edge-path>
+   npm run video:studio -- --props <output-dir>/<note-id>.props.json
+   ```
+
+   不带 `--mp4` 时只生成视频 IR、Markdown 分镜和 `.props.json`。MP4 固定为 1080×1920、30 fps、60–90 秒、H.264 且无音轨。浏览器只使用 `--browser`、`REMOTION_BROWSER_EXECUTABLE`、`PLAYWRIGHT_CHROMIUM_EXECUTABLE` 或系统已知位置的 Chromium/Edge/Chrome；不自动下载。Studio 载入生成的 props，只启动本地预览服务，不代表已导出或发布。
 
 ## 质量门槛
 
@@ -65,6 +75,7 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
 - 医疗、法律、金融、人身安全和化学品操作默认高风险；没有权威复核时将发布状态设为 `needs_review`。
 - 发布到社交平台时披露 AI 辅助、数据范围、截断情况和利益关系；标题可以优化，但不得改变证据结论。
 - 图文主卡数量为 `7 + 方案步骤数`，每个步骤独占一张；完整证据只进入独立附录。PNG 必须为 1080×1440，真实字体测量仍溢出时停止并报告卡片 ID，不得裁字或继续缩成不可读小字；整套成功后才替换旧图，失败时保留上一套完整输出。
+- 视频只接受 1–5 个方案步骤，时长按步骤数确定在 60–90 秒。引用 `unsafe_advice` 的场景必须同场持续显示“未核验高风险观点，不是操作建议”，并让口播和该场景首条字幕同步警示。
 - 发布前至少人工查看封面、内容最密动作卡、风险卡和末卡，确认页码、证据、风险提示、安全互动及手机端字号。
 
 ## 失败与降级
@@ -75,6 +86,7 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
 - 外部事实无法复核：放入待验证，不用于把高风险内容标为可发布。
 - 脚本不可运行：说明“未运行确定性校验”，不把结果称为已验证。
 - PNG 依赖不可用：交付自包含 HTML 和卡片 IR，明确说明“未生成 PNG”；不得暗示截图已完成。
+- MP4 依赖或浏览器不可用：交付 `xhs-video/v1`、Markdown 分镜和 props，明确说明“未生成 MP4”。渲染先写临时文件并校验，失败时保留已有 MP4，不得留下半成品。
 
 ## 边界
 
@@ -82,3 +94,4 @@ description: 筛选小红书候选笔记中的真实问题帖，完整分类评�
 - 不调用未经现场验证的私有评论接口，不把笔记互动计数误称为评论正文。
 - 不输出普通用户主页标识；原始数据与发布稿分开保存，不提交 Cookie、Token 或未脱敏导出。
 - 短引原评论仅用于证据定位；避免大段复制，并尊重平台规则与原作者权益。
+- 当前视频输出没有 TTS、配音合成或音轨，`audio.kind=none`；口播仅是脚本和字幕来源。Remotion 为可选依赖，使用前遵守其[特殊许可](https://www.remotion.dev/docs/license)。

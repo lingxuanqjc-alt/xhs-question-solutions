@@ -145,13 +145,13 @@ class RenderTests(unittest.TestCase):
         a = good(); a["posts"][0]["solution"]["steps"].append({"text": "复查", "claim_ids": ["cl1"], "evidence_comment_ids": ["c2"], "applies_when": ["仍有问题"], "verification": "记录结果", "stop_conditions": ["故障加重"]})
         out = render(canonical(), a, "xhs-cards"); self.assertIn("## 卡片 4｜第 2 步", out); self.assertIn("复查", out); self.assertIn("- **验证：** 记录结果", out); self.assertIn("- **停止：** 故障加重", out)
     def test_video_is_timed_storyboard(self):
-        out = render(canonical(), good(), "short-video"); self.assertIn("| 时段 | 画面 | 口播 | 字幕 | 证据 |", out); self.assertIn("80–90 秒", out)
+        out = render(canonical(), good(), "short-video"); self.assertIn("| 时段 | 画面 | 口播 | 字幕 | 证据 |", out); self.assertIn("56–60 秒", out)
     def test_video_splits_steps_without_truncating_sentences(self):
         a = good(); steps = a["posts"][0]["solution"]["steps"]
         steps += [{"text": "第二个完整动作", "claim_ids": ["cl1"], "evidence_comment_ids": ["c2"], "applies_when": ["条件二"], "verification": "完整验证二", "stop_conditions": ["停止条件二"]},
                   {"text": "第三个完整动作", "claim_ids": ["cl1"], "evidence_comment_ids": ["c1"], "applies_when": ["条件三"], "verification": "完整验证三", "stop_conditions": ["停止条件三"]}]
         out = render(canonical(), a, "short-video")
-        for value in ("15–26 秒", "26–38 秒", "38–50 秒", "第二个完整动作", "完整验证二", "第三个完整动作", "完整验证三"): self.assertIn(value, out)
+        for value in ("8–17 秒", "17–26 秒", "26–35 秒", "第二个完整动作", "完整验证二", "第三个完整动作", "完整验证三"): self.assertIn(value, out)
         self.assertNotIn("第二个完整动…", out)
     def test_video_uses_chinese_status_and_clean_punctuation(self):
         a = good(); a["posts"][0]["solution"]["summary"] = "先观察。。"
@@ -165,7 +165,7 @@ class RenderTests(unittest.TestCase):
         analysis = json.loads((root / "examples/sample-analysis.json").read_text(encoding="utf-8"))
         rows = normalize(payload); self.assertEqual([], validate(rows, analysis))
         report = render(rows, analysis, "report"); cards = render(rows, analysis, "xhs-cards"); video = render(rows, analysis, "short-video")
-        self.assertIn("页面显示 12 条 · 实际采集 9 条", report); self.assertIn("排除的候选", report); self.assertEqual(10, cards.count("## 卡片 ")); self.assertIn("80–90 秒", video)
+        self.assertIn("页面显示 12 条 · 实际采集 9 条", report); self.assertIn("排除的候选", report); self.assertEqual(10, cards.count("## 卡片 ")); self.assertIn("71–75 秒", video)
     def test_card_ir_has_versioned_dynamic_structure(self):
         deck = build_card_decks(canonical(), good())["decks"][0]
         self.assertEqual(8, len(deck["cards"]))

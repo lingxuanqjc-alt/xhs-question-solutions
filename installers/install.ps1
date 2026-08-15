@@ -6,6 +6,36 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$excludedDirectoryNames = @(
+    "node_modules",
+    "build",
+    ".cache",
+    ".tmp",
+    "__pycache__",
+    ".pytest_cache",
+    ".remotion"
+)
+
+function Copy-InstallPayload {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    foreach ($item in Get-ChildItem -LiteralPath $Source -Force) {
+        if ($item.PSIsContainer) {
+            if ($excludedDirectoryNames -contains $item.Name) {
+                continue
+            }
+            Copy-InstallPayload -Source $item.FullName -Destination (Join-Path $Destination $item.Name)
+        }
+        else {
+            Copy-Item -LiteralPath $item.FullName -Destination (Join-Path $Destination $item.Name)
+        }
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($DestinationRoot)) {
     throw "DestinationRoot cannot be empty."
 }
@@ -61,7 +91,7 @@ try {
     # Prepare both payloads before changing either installed copy.
     foreach ($entry in $entries) {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $entry.Target) | Out-Null
-        Copy-Item -LiteralPath $entry.Source -Destination $entry.Stage -Recurse
+        Copy-InstallPayload -Source $entry.Source -Destination $entry.Stage
     }
 
     foreach ($entry in $entries) {

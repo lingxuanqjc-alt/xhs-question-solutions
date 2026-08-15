@@ -6,7 +6,7 @@
 
 - `report`：默认。用于决策、复盘和继续追问，保留完整主张账本、冲突与证据索引。
 - `xhs-cards`：用于小红书、Instagram 图文轮播、微信公众号卡片等扫读场景。可输出 Markdown 文案、版本化卡片 IR、自包含 HTML 和可选 PNG；不直接声称已发布。
-- `short-video`：用于小红书视频、抖音、TikTok、Reels 与 Shorts。输出 60–90 秒分镜、口播和字幕。
+- `short-video`：用于小红书视频、抖音、TikTok、Reels 与 Shorts。输出 60–90 秒分镜、口播、字幕和 `xhs-video/v1` IR，可选渲染无声 MP4。
 
 ## 共同结构
 
@@ -49,16 +49,23 @@ HTML 始终可生成且不加载远程素材。PNG 后端使用 Playwright 和�
 
 ## `short-video`
 
-建议节奏：
+Markdown 和 Remotion 项目都必须从 `xhs-video/v1` IR 生成：
 
-- 0–5 秒：复述痛点并给结论，不制造虚假悬念。
-- 5–15 秒：说明分析范围与为什么不能只看高赞。
-- 15–50 秒：依次展示 3 个动作，每个动作同时显示评论 ID。
-- 50–65 秒：展示一个失败反例或关键冲突。
-- 65–80 秒：风险、停止条件和仍需确认的信息。
-- 80–90 秒：披露样本、AI 辅助与获取完整证据的位置。
+```text
+python scripts/render_result.py <canonical.jsonl> <analysis.json> <video.md> --format short-video --structured-output <video.json>
+npm ci --ignore-scripts --no-audit --no-fund
+python scripts/render_video.py <canonical.jsonl> <analysis.json> <output-dir>
+python scripts/render_video.py <canonical.jsonl> <analysis.json> <output-dir> --mp4 --browser <chrome-or-edge-path>
+npm run video:studio -- --props <output-dir>/<note-id>.props.json
+```
 
-字幕只压缩表达，不得删除使结论成立的适用条件。短视频描述区再次放数据范围和高风险提示。
+固定配置为 1080×1920、30 fps、60–90 秒、H.264、`audio.kind=none`。场景顺序为钩子、范围、每步一个动作、证据、冲突与风险、未知项、披露和安全 CTA；1–5 个步骤分别映射到确定时长，不把多个动作挤进同一场景。字幕只压缩表达，不得删除使结论成立的适用条件。
+
+引用 `unsafe_advice` 的每个场景必须就地持续显示“未核验高风险观点，不是操作建议”，口播前置同义警告，首条字幕也必须包含警示。短视频描述区再次放数据范围和高风险提示。
+
+当前实现不生成 TTS、配音或音轨；口播字段仅供脚本、字幕和后续人工录音使用。Studio 命令载入构建器生成的 `.props.json`，启动不自动打开浏览器的本地预览服务，不代表已导出或发布。
+
+MP4 渲染仅复用显式 `--browser`、`REMOTION_BROWSER_EXECUTABLE`、`PLAYWRIGHT_CHROMIUM_EXECUTABLE` 或本机已知位置的 Chromium/Edge/Chrome，不自动下载。成品先写入同级临时文件，通过容器与元数据校验后才替换目标；失败必须保留旧 MP4。Remotion 的使用受其[特殊许可](https://www.remotion.dev/docs/license)约束。
 
 ## 90 分发布自检
 

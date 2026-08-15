@@ -52,9 +52,6 @@ def _clean(value):
     return text.replace("；。", "。")
 
 
-def _cell(value): return _clean(value).replace("|", "｜")
-
-
 def _claim_text(claim): return str(claim.get("text") or claim.get("claim") or "")
 
 
@@ -267,12 +264,17 @@ def serialize_card_decks_json(card_decks):
 def render(canonical, analysis, format_name="report"):
     if format_name == "xhs-cards":
         return render_card_decks_markdown(build_card_decks(canonical, analysis))
+    if format_name == "short-video":
+        from render_video import build_video_ir, render_video_markdown
+        return render_video_markdown(build_video_ir(canonical, analysis))
+    if format_name != "report":
+        raise ValueError(f"unsupported output format: {format_name}")
     errors = validate(canonical, analysis)
     if errors: raise ValueError("analysis validation failed:\n" + "\n".join(errors))
     notes = {r["note_id"]: r for r in canonical if r.get("kind") == "note"}
     canonical_comments = [r for r in canonical if r.get("kind") == "comment"]
     posts = [p for p in analysis["posts"] if p["is_question"]]
-    lines = {"report": ["# 小红书问题帖解决方案"], "xhs-cards": ["# 小红书图文卡片脚本"], "short-video": ["# 短视频口播脚本"]}[format_name]
+    lines = ["# 小红书问题帖解决方案"]
     excluded = [p for p in analysis["posts"] if not p["is_question"]]
     scope = f"候选笔记：{len(analysis['posts'])}；问题帖：{len(posts)}；排除：{len(excluded)}"
     for post in posts:
@@ -281,50 +283,28 @@ def render(canonical, analysis, format_name="report"):
         groups = {}
         for item in post["comments"]: groups.setdefault(item["category"], []).append(item)
         claims, conflicts = solution["claims"], solution.get("conflicts", [])
-        if format_name == "report":
-            lines += [f"\n## {post['question']}", f"\n### 一句话答案\n{solution['summary']}", f"\n### 数据范围\n{scope}；{_coverage(note)}", "\n### 可执行步骤"]
-            for i, step in enumerate(solution["steps"], 1):
-                lines += [f"{i}. **{step['text']}**（证据：{', '.join(step['evidence_comment_ids'])}）",
-                          f"   - 适用：{_items(step['applies_when'])}", f"   - 验证：{step['verification']}", f"   - 停止：{_items(step['stop_conditions'])}"]
-            lines += ["\n### 评论答案与经验"]
-            for category in CATEGORY_ZH:
-                if category in groups:
-                    lines.append(f"#### {CATEGORY_ZH[category]}")
-                    lines.extend(f"- {item['claim']}（`{item['comment_id']}`，证据质量：{_zh(item['evidence_quality'], QUALITY_ZH)}；风险信号：{_items([_zh(flag, RISK_FLAG_ZH) for flag in item['risk_flags']])}）" for item in groups[category])
-            lines += ["\n### 主张账本"]
-            lines.extend(f"- `{claim['claim_id']}`｜{_zh(claim['kind'], CLAIM_KIND_ZH)}｜{_zh(claim['status'], CLAIM_STATUS_ZH)}｜{_claim_text(claim)}｜证据：{', '.join(claim.get('evidence_comment_ids', [])) or '外部来源'}｜外部：{', '.join(_claim_urls(claim)) or '未提供'}" for claim in claims)
-            lines += ["\n### 冲突"] + _conflict_lines(conflicts)
-            lines += ["\n### 风险与未知", f"- 风险等级：{_zh(solution['risk_level'], RISK_LEVEL_ZH)}；发布状态：{_zh(solution['publish_status'], PUBLISH_STATUS_ZH)}", "#### 约束"]
-            lines += _bullets(solution.get("constraints", [])) + ["#### 未知项"] + _bullets(solution.get("unknowns", []))
-        else:
-            steps = solution["steps"]
-            conflict_voice = "；".join(p["claim"] for c in conflicts for p in c.get("positions", [])) or "样本中没有足够证据形成明确冲突"
-            unknowns = _items(solution.get("unknowns", []))
-            rows = [
-                ("0–5 秒", "问题标题 + 一句话答案", solution["summary"], solution["summary"], "—"),
-                ("5–15 秒", "覆盖率与截断标识", f"本次{scope}；{_coverage(note)}，不能只看高赞。", "样本范围 ≠ 事实", "—"),
-            ]
-            for i, step in enumerate(steps):
-                start, end = 15 + 35 * i // len(steps), 15 + 35 * (i + 1) // len(steps)
-                voice = f"第{i + 1}步：{step['text']}。适用条件：{_items(step['applies_when'])}。验证方式：{step['verification']}。证据：{', '.join(step['evidence_comment_ids'])}。"
-                rows.append((f"{start}–{end} 秒", f"动作 {i + 1} + 评论 ID", voice, f"{step['text']}｜验证：{step['verification']}", ", ".join(step["evidence_comment_ids"])))
-            rows += [
-                ("50–65 秒", "冲突双方并列", conflict_voice, "不按点赞裁决分歧", ", ".join(cid for c in conflicts for p in c.get("positions", []) for cid in p.get("evidence_comment_ids", [])) or "—"),
-                ("65–80 秒", "风险、停止条件、未知项", f"风险等级是{_zh(solution['risk_level'], RISK_LEVEL_ZH)}。待确认：{unknowns}。遇到停止条件就暂停并升级处理。", "风险与停止条件", "—"),
-                ("80–90 秒", "AI 与样本披露", f"发布状态为{_zh(solution['publish_status'], PUBLISH_STATUS_ZH)}。内容由 AI 辅助整理，经验不等于事实，完整证据见索引。", "AI 辅助｜样本有限｜请复核", "证据索引"),
-            ]
-            lines += [f"\n## 选题：{post['question']}", "\n| 时段 | 画面 | 口播 | 字幕 | 证据 |", "|---|---|---|---|---|"]
-            lines.extend("| " + " | ".join(_cell(cell) for cell in row) + " |" for row in rows)
-            lines += [f"\n### 描述区披露\n{_coverage(note)}。高风险内容须经权威来源复核；AI 辅助整理。", "\n### 证据索引"] + _evidence_lines(post["note_id"], canonical_comments, classified)
-    if format_name == "report":
-        lines += ["\n## 排除的候选"]
-        lines.extend(f"- `{post['note_id']}`：{post['exclusion_reason']}" for post in excluded)
-        if not excluded: lines.append("- 无")
-        lines += ["\n## 证据索引"]
-        for post in posts:
-            classified = {item["comment_id"]: item for item in post["comments"]}
-            if len(posts) > 1: lines.append(f"### {post['note_id']}｜{post['question']}")
-            lines += _evidence_lines(post["note_id"], canonical_comments, classified)
+        lines += [f"\n## {post['question']}", f"\n### 一句话答案\n{solution['summary']}", f"\n### 数据范围\n{scope}；{_coverage(note)}", "\n### 可执行步骤"]
+        for i, step in enumerate(solution["steps"], 1):
+            lines += [f"{i}. **{step['text']}**（证据：{', '.join(step['evidence_comment_ids'])}）",
+                      f"   - 适用：{_items(step['applies_when'])}", f"   - 验证：{step['verification']}", f"   - 停止：{_items(step['stop_conditions'])}"]
+        lines += ["\n### 评论答案与经验"]
+        for category in CATEGORY_ZH:
+            if category in groups:
+                lines.append(f"#### {CATEGORY_ZH[category]}")
+                lines.extend(f"- {item['claim']}（`{item['comment_id']}`，证据质量：{_zh(item['evidence_quality'], QUALITY_ZH)}；风险信号：{_items([_zh(flag, RISK_FLAG_ZH) for flag in item['risk_flags']])}）" for item in groups[category])
+        lines += ["\n### 主张账本"]
+        lines.extend(f"- `{claim['claim_id']}`｜{_zh(claim['kind'], CLAIM_KIND_ZH)}｜{_zh(claim['status'], CLAIM_STATUS_ZH)}｜{_claim_text(claim)}｜证据：{', '.join(claim.get('evidence_comment_ids', [])) or '外部来源'}｜外部：{', '.join(_claim_urls(claim)) or '未提供'}" for claim in claims)
+        lines += ["\n### 冲突"] + _conflict_lines(conflicts)
+        lines += ["\n### 风险与未知", f"- 风险等级：{_zh(solution['risk_level'], RISK_LEVEL_ZH)}；发布状态：{_zh(solution['publish_status'], PUBLISH_STATUS_ZH)}", "#### 约束"]
+        lines += _bullets(solution.get("constraints", [])) + ["#### 未知项"] + _bullets(solution.get("unknowns", []))
+    lines += ["\n## 排除的候选"]
+    lines.extend(f"- `{post['note_id']}`：{post['exclusion_reason']}" for post in excluded)
+    if not excluded: lines.append("- 无")
+    lines += ["\n## 证据索引"]
+    for post in posts:
+        classified = {item["comment_id"]: item for item in post["comments"]}
+        if len(posts) > 1: lines.append(f"### {post['note_id']}｜{post['question']}")
+        lines += _evidence_lines(post["note_id"], canonical_comments, classified)
     return "\n".join(lines).replace("。；", "；").replace("。。", "。").rstrip() + "\n"
 
 
@@ -333,12 +313,18 @@ def main():
     parser.add_argument("--format", choices=("report", "xhs-cards", "short-video"), default="report")
     parser.add_argument("--structured-output", type=Path, help="optional xhs-card-deck/v1 JSON sidecar")
     args = parser.parse_args(); canonical = load_jsonl(args.canonical); analysis = json.loads(args.analysis.read_text(encoding="utf-8-sig"))
-    if args.structured_output and args.format != "xhs-cards": parser.error("--structured-output requires --format xhs-cards")
+    if args.structured_output and args.format not in {"xhs-cards", "short-video"}: parser.error("--structured-output requires --format xhs-cards or short-video")
     if args.format == "xhs-cards":
         card_decks = build_card_decks(canonical, analysis); content = render_card_decks_markdown(card_decks)
         if args.structured_output:
             args.structured_output.parent.mkdir(parents=True, exist_ok=True)
             args.structured_output.write_text(serialize_card_decks_json(card_decks), encoding="utf-8")
+    elif args.format == "short-video":
+        from render_video import build_video_ir, render_video_markdown, serialize_video_ir
+        video_ir = build_video_ir(canonical, analysis); content = render_video_markdown(video_ir)
+        if args.structured_output:
+            args.structured_output.parent.mkdir(parents=True, exist_ok=True)
+            args.structured_output.write_text(serialize_video_ir(video_ir), encoding="utf-8")
     else: content = render(canonical, analysis, args.format)
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(content, encoding="utf-8")
     print(f"rendered {args.format}: {args.output}")

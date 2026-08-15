@@ -1,4 +1,4 @@
 interface:
   display_name: "小红书评论解题"
-  short_description: "筛选真实问题帖，将评论证据转成可追溯方案与图文成品"
-  default_prompt: "Use $xhs-question-solutions to screen Xiaohongshu question posts and turn the collected comments into a traceable Chinese solution plus a publish-ready card deck."
+  short_description: "筛选问题帖，将评论证据转成可追溯方案、图文卡片与视频项目"
+  default_prompt: "Use $xhs-question-solutions to screen Xiaohongshu question posts and turn the collected comments into a traceable Chinese solution plus publish-ready cards and a video project."

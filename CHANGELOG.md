@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0] - 2026-08-15
+
+### Added
+
+- Versioned `xhs-video/v1` intermediate representation shared by short-video Markdown, Remotion Studio and MP4 rendering.
+- Optional transactional 1080×1920, 30 fps, 60–90 second silent H.264 MP4 export using a local Chromium, Edge or Chrome executable.
+- Same-scene visual, narration and first-caption warnings whenever a scene references unverified unsafe advice.
+
+### Changed
+
+- Video tooling keeps narration as text only (`audio.kind=none`); TTS, voice synthesis and browser downloads remain outside the project boundary.
+- Failed MP4 renders preserve the previous complete output instead of replacing it with a partial file.
+- Third-party licensing is now documented separately, including Remotion's special license.
+
 ## [0.3.0] - 2026-08-15
 
 ### Added

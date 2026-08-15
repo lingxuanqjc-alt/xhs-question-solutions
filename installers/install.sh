@@ -44,9 +44,36 @@ core_backed_up=0
 wrapper_backed_up=0
 core_installed=0
 wrapper_installed=0
+core_archive="$core_stage.payload.tar"
+wrapper_archive="$wrapper_stage.payload.tar"
+
+copy_install_payload() {
+  source_path=$1
+  destination_path=$2
+  archive_path=$3
+  mkdir -p -- "$destination_path"
+  (
+    cd -- "$source_path"
+    tar -cf "$archive_path" \
+      --exclude='./node_modules' --exclude='*/node_modules' \
+      --exclude='./build' --exclude='*/build' \
+      --exclude='./.cache' --exclude='*/.cache' \
+      --exclude='./.tmp' --exclude='*/.tmp' \
+      --exclude='./__pycache__' --exclude='*/__pycache__' \
+      --exclude='./.pytest_cache' --exclude='*/.pytest_cache' \
+      --exclude='./.remotion' --exclude='*/.remotion' \
+      .
+  )
+  (
+    cd -- "$destination_path"
+    tar -xf "$archive_path"
+  )
+  rm -f -- "$archive_path"
+}
 
 cleanup_stages() {
   rm -rf -- "$core_stage" "$wrapper_stage"
+  rm -f -- "$core_archive" "$wrapper_archive"
 }
 trap cleanup_stages EXIT
 trap 'exit 129' HUP
@@ -64,8 +91,8 @@ fi
 
 # Prepare both payloads before changing either installed copy.
 mkdir -p -- "$(dirname -- "$core_target")" "$(dirname -- "$wrapper_target")"
-cp -R -- "$core_source" "$core_stage"
-cp -R -- "$wrapper_source" "$wrapper_stage"
+copy_install_payload "$core_source" "$core_stage" "$core_archive"
+copy_install_payload "$wrapper_source" "$wrapper_stage" "$wrapper_archive"
 
 rollback() {
   set +e

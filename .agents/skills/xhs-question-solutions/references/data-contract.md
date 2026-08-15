@@ -106,3 +106,36 @@
 - `publish_status`：`ready`、`needs_review`
 
 `external_sources` 是放在 `external_fact` 主张中的 URL 字符串列表。高风险结果要标为 `ready` 时，所有外部事实主张都必须为 `supported` 且带有效 URL。所有评论 ID 必须属于当前笔记；所有步骤评论 ID 必须被其 `claim_ids` 对应的主张覆盖。
+
+## Video IR: `xhs-video/v1`
+
+短视频 Markdown、Remotion Studio 与 MP4 共用确定性视频 IR：
+
+```json
+{
+  "schema": "xhs-video/v1",
+  "videos": [
+    {
+      "video_id": "note:demo-mold-001",
+      "note_id": "demo-mold-001",
+      "profile": "xhs-vertical-1080x1920-v1",
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration_ms": 75000,
+      "duration_in_frames": 2250,
+      "unsafe_evidence_comment_ids": [],
+      "meta": {"audio": {"kind": "none"}},
+      "scenes": [],
+      "appendix": {"evidence": []}
+    }
+  ]
+}
+```
+
+- `videos` 每项对应一个确认的问题帖；仅接受 1–5 个方案步骤，总时长按步骤数确定为 60–90 秒。
+- `scenes` 顺序固定为 `hook`、`scope`、逐步 `action`、`evidence`、`conflict_risk`、`risk_unknowns`、`disclosure`、`cta`。每个字幕含 `text`、`startMs`、`endMs`、`timestampMs` 与 `confidence`，按顺序拼接后必须与该场景口播一致。
+- 引用了 `unsafe_advice` 证据的场景必须携带 `unsafe_unverified_not_advice` 警示，并让视觉、口播与首条字幕同场呈现。
+- `unsafe_evidence_comment_ids` 是 Python 从已校验评论 `risk_flags` 生成的必填安全清单。Node 必须以此清单核对附录固定警示及每个引用场景，不得从可选展示文案反推危险性。
+- `appendix` 复用规范化评论的证据字段，不让模型复制或改写证据索引。
+- 当前渲染配置为 1080×1920、30 fps、H.264、无音轨；`meta.audio.kind` 必须为 `none`，不表示已生成 TTS 或配音。

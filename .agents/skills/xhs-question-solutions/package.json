@@ -1,12 +1,21 @@
 {
-  "name": "xhs-question-solutions-card-renderer",
-  "version": "0.3.0",
+  "name": "xhs-question-solutions-renderers",
+  "version": "0.4.0",
   "private": true,
-  "description": "Optional browser backend for deterministic Xiaohongshu card screenshots",
+  "description": "Pinned optional runtimes for deterministic Xiaohongshu cards and vertical videos",
   "engines": {
     "node": ">=20"
   },
+  "scripts": {
+    "video:studio": "remotion studio remotion/index.jsx --no-open"
+  },
   "dependencies": {
-    "playwright-core": "1.62.1"
+    "@remotion/bundler": "4.0.512",
+    "@remotion/cli": "4.0.512",
+    "@remotion/renderer": "4.0.512",
+    "playwright-core": "1.62.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.512"
   }
 }

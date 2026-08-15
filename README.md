@@ -43,6 +43,8 @@ Claude Code：
 - [小红书卡片稿](examples/sample-xhs-cards.md)
 - [实际渲染的 1080×1440 卡片（10 张主卡 + 3 张证据附录）](examples/sample-cards/demo-mold-001-21e64ed3/)
 - [短视频分镜](examples/sample-short-video.md)
+- [可复现的视频 IR、Remotion props 与 1080×1920 预览帧](examples/sample-video/)
+- [75 秒无声 H.264 演示成片（v0.4.0 Release）](https://github.com/lingxuanqjc-alt/xhs-question-solutions/releases/download/v0.4.0/xhs-question-solutions-v0.4.0-demo.mp4)
 
 ## 三层可信链路
 
@@ -51,8 +53,8 @@ flowchart LR
     A["候选笔记与评论"] --> B["确定性规范化\n匿名化·去重·回复树·覆盖率"]
     B --> C["Agent 语义判断\n问题帖·评论类别·主张账本"]
     C --> D["确定性校验\n完整分类·同帖引用·高风险门槛"]
-    D --> E["版本化卡片 IR\n同一事实源·不解析标题"]
-    E --> F["读者版输出\n报告·HTML/PNG 卡片·短视频分镜"]
+    D --> E["版本化卡片 / 视频 IR\n同一事实源·不解析标题"]
+    E --> F["读者版输出\n报告·HTML/PNG·分镜/MP4"]
 ```
 
 模型只负责需要判断的部分：问题识别、分类、主张提取和摘要。ID 路由、去重、完整性、证据引用和渲染由标准库脚本处理。
@@ -73,7 +75,7 @@ flowchart LR
 
 - `report`：一句话答案、3–5 步方案、主张账本、冲突、未知项和完整证据索引。
 - `xhs-cards`：通常 8–12 张图文卡片；每个方案步骤独占一张，完整证据放独立附录。可生成 Markdown、结构化 IR、自包含 HTML 和可选 PNG。
-- `short-video`：60–90 秒分镜、口播和字幕，步骤与评论 ID 同屏。
+- `short-video`：从同一证据源确定性生成 60–90 秒分镜、口播、字幕和 `xhs-video/v1` IR；可选渲染 1080×1920、30 fps 的无声 H.264 MP4。
 
 标题、封面和节奏可以针对平台调整，但所有格式共享同一个已校验的 `analysis.json`，不会为了传播效果修改证据结论。
 
@@ -106,6 +108,7 @@ bash installers/install.sh
 python -X utf8 .agents/skills/xhs-question-solutions/scripts/normalize_xhs_export.py examples/sample-input.json build/sample.jsonl
 python -X utf8 .agents/skills/xhs-question-solutions/scripts/validate_result.py build/sample.jsonl examples/sample-analysis.json
 python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_result.py build/sample.jsonl examples/sample-analysis.json build/report.md --format report
+python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_result.py build/sample.jsonl examples/sample-analysis.json build/short-video.md --format short-video --structured-output build/xhs-video.json
 python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_card_images.py build/sample.jsonl examples/sample-analysis.json build/cards --style morandi
 python -X utf8 -m unittest discover -s tests -v
 ```
@@ -126,6 +129,16 @@ npm ci --prefix .agents/skills/xhs-question-solutions --ignore-scripts --no-audi
 
 脚本不会自动安装浏览器或依赖。缺少 PNG 后端时，自包含 HTML 与 `xhs-card-deck/v1` IR 仍会保留；不能据此声称 PNG 已生成。PNG 输出包含主卡和分页证据附录。截图阶段逐张测量真实布局，任何卡片在最小可读缩放仍溢出都会返回对应 `card_id`，不会静默裁字；新图片全部通过后才替换上一套，失败不会留下半套成品。
 
+视频项目与 MP4 使用同一组锁定的 Node.js 依赖。先运行上面的 `npm ci`，再按需执行：
+
+```powershell
+python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_video.py build/sample.jsonl examples/sample-analysis.json build/video
+python -X utf8 .agents/skills/xhs-question-solutions/scripts/render_video.py build/sample.jsonl examples/sample-analysis.json build/video --mp4 --browser "C:\Program Files\Google\Chrome\Application\chrome.exe"
+npm --prefix .agents/skills/xhs-question-solutions run video:studio -- --props "<absolute-path-to-props.json>"
+```
+
+第一条生成 `xhs-video/v1` 项目、Markdown 分镜和各视频 `.props.json`；`--mp4` 才调用 Remotion。浏览器可由 `--browser`、`REMOTION_BROWSER_EXECUTABLE` 指定，或复用系统中已知位置的 Chromium、Edge、Chrome；脚本不会下载浏览器。输出固定为 1080×1920、30 fps、60–90 秒、H.264 无声视频。Studio 以 `--no-open` 启动并打印本地地址；将占位符替换为生成的 props 绝对路径，它只用于预览，不会发布内容。当前管线没有 TTS 或配音合成，`audio.kind=none`，口播文本仅作为脚本和字幕来源。MP4 通过临时文件完成渲染与校验后才替换目标；失败时旧 MP4 保持不变。
+
 ## 隐私、真实性与安全边界
 
 - 只处理公开内容或用户有权访问的数据；不绕过登录、验证码、风控或访问限制。
@@ -133,6 +146,7 @@ npm ci --prefix .agents/skills/xhs-question-solutions --ignore-scripts --no-audi
 - 规范化数据使用帖内稳定匿名代号；不要提交 Cookie、Token、真实导出或未脱敏评论。
 - 点赞只表示关注度；相关回复、复制话术和转述不算多个独立来源。
 - 医疗、法律、金融、人身安全及化学品操作默认高风险；没有权威复核时不能标为可发布。
+- 视频场景引用 `unsafe_advice` 证据时，必须在同一场景持续显示“未核验高风险观点，不是操作建议”，且口播与首条字幕同步警示。
 - 社交发布稿应披露 AI 辅助、样本范围、截断和利益关系。
 
 ## 项目结构
@@ -154,4 +168,4 @@ demo/                                    项目发布视频脚本
 
 ## 许可证
 
-[MIT](LICENSE)
+本项目自有代码采用 [MIT](LICENSE)。可选视频渲染依赖 Remotion，其使用受 [Remotion 特殊许可](https://www.remotion.dev/docs/license)约束；详见 [第三方声明](THIRD_PARTY_NOTICES.md)。
