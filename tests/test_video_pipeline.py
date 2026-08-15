@@ -1,5 +1,6 @@
 import copy
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,8 @@ from render_video import (
     SCHEMA,
     UNSAFE_NOTICE_CODE,
     UNSAFE_WARNING,
+    _caption_chunks,
+    _stop_message,
     build_video_ir,
     display_units,
     render_video_markdown,
@@ -35,6 +38,147 @@ def sample():
 
 
 class VideoContractTests(unittest.TestCase):
+    def test_hook_frontloads_title_bounded_answer_and_a_specific_view_path(self):
+        canonical, analysis = sample()
+        post = analysis["posts"][0]
+        hook = build_video_ir(canonical, analysis)["videos"][0]["scenes"][0]
+        title = post["social_title"]
+        path = f"继续看{len(post['solution']['steps'])}步"
+
+        self.assertEqual(3_000, hook["end_ms"] - hook["start_ms"])
+        self.assertEqual(post["solution"]["summary"], hook["content"]["summary"])
+        self.assertTrue(hook["narration"].startswith(title))
+        self.assertIn(path, hook["narration"])
+        excerpt = hook["narration"].removeprefix(title).removesuffix("。").removesuffix(path).strip("。！？!?；;，,：: ")
+        self.assertTrue(excerpt)
+        self.assertIn(excerpt, post["solution"]["summary"])
+        self.assertEqual(hook["narration"], "".join(caption["text"] for caption in hook["captions"]))
+        self.assertLessEqual(display_units(hook["narration"]), 28)
+        self.assertLessEqual(hook["captions"][-1]["endMs"], 3_000)
+
+    def test_hook_excerpt_keeps_a_negative_safety_boundary_instead_of_clipping_it(self):
+        canonical, analysis = sample()
+        post = analysis["posts"][0]
+        post["solution"]["summary"] = "不要直接喷酒精，先查潮湿根因再处理。"
+        hook = build_video_ir(canonical, analysis)["videos"][0]["scenes"][0]
+        title = post["social_title"]
+        path = f"继续看{len(post['solution']['steps'])}步"
+        excerpt = hook["narration"].removeprefix(title).removesuffix("。").removesuffix(path).strip("。！？!?；;，,：: ")
+
+        self.assertIn(excerpt, post["solution"]["summary"])
+        self.assertIn("不要", excerpt)
+        self.assertIn("喷酒精", excerpt)
+
+    def test_hook_uses_a_short_route_when_title_or_summary_cannot_safely_fit(self):
+        cases = (
+            ("28-character title", lambda post: post.__setitem__("social_title", "甲" * 28)),
+            ("long question fallback", lambda post: (post.pop("social_title", None), post.__setitem__("question", "这个没有短标题的问题描述包含很多现场限制且显然无法在三秒口播中完整读完应该怎么办"))),
+            ("single long safety clause", lambda post: post["solution"].__setitem__("summary", "不要在无法确认通风火源敏感人群产品说明和现场条件之前自行进行任何高风险处理")),
+        )
+        for label, mutate in cases:
+            with self.subTest(case=label):
+                canonical, analysis = sample()
+                post = analysis["posts"][0]
+                mutate(post)
+                expected_title = post.get("social_title") or post["question"]
+                expected_summary = post["solution"]["summary"]
+
+                hook = build_video_ir(canonical, analysis)["videos"][0]["scenes"][0]
+
+                self.assertEqual(expected_title, hook["content"]["social_title"])
+                self.assertEqual(expected_summary, hook["content"]["summary"])
+                self.assertEqual("问题、证据、行动，继续看3步。", hook["narration"])
+                self.assertNotIn(expected_summary.strip("。"), hook["narration"])
+
+    def test_cta_copies_the_analysis_selected_primary_stop_condition(self):
+        canonical, analysis = sample()
+        solution = analysis["posts"][0]["solution"]
+        steps = solution["steps"]
+        solution["primary_stop_condition"] = steps[1]["stop_conditions"][0]
+        cta = next(scene for scene in build_video_ir(canonical, analysis)["videos"][0]["scenes"] if scene["role"] == "cta")
+
+        self.assertIn(solution["primary_stop_condition"], cta["content"]["stop_message"])
+        self.assertIn("设备过热或冒烟", _stop_message([{"stop_conditions": ["设备过热或冒烟。"]}], "设备过热或冒烟。"))
+
+    def test_primary_stop_condition_must_be_one_of_the_step_boundaries(self):
+        canonical, analysis = sample()
+        analysis["posts"][0]["solution"]["primary_stop_condition"] = "模型自行编造的停止条件"
+
+        with self.assertRaisesRegex(ValueError, "primary_stop_condition"):
+            build_video_ir(canonical, analysis)
+
+    def test_missing_primary_stop_condition_keeps_every_boundary_without_ranking_words(self):
+        canonical, analysis = sample()
+        solution = analysis["posts"][0]["solution"]
+        solution.pop("primary_stop_condition", None)
+        for index, step in enumerate(solution["steps"], 1):
+            step["stop_conditions"] = [f"停止边界{index}"]
+        cta = next(scene for scene in build_video_ir(canonical, analysis)["videos"][0]["scenes"] if scene["role"] == "cta")
+
+        for condition in (condition for step in solution["steps"] for condition in step["stop_conditions"]):
+            self.assertIn(condition, cta["content"]["stop_message"])
+        self.assertEqual("出现无法安全判断或情况恶化时，请停止自行处理并寻求合适的专业帮助。", _stop_message([], None))
+
+    def test_missing_primary_stop_condition_fails_early_when_all_boundaries_do_not_fit(self):
+        canonical, analysis = sample()
+        analysis["posts"][0]["solution"].pop("primary_stop_condition", None)
+
+        with self.assertRaisesRegex(ValueError, "CTA_STOP_CONDITIONS_TOO_LONG"):
+            build_video_ir(canonical, analysis)
+
+    def test_stop_boundaries_reject_leading_or_trailing_whitespace_before_rendering(self):
+        cases = (
+            ("step boundary", lambda solution: solution["steps"][0]["stop_conditions"].__setitem__(0, "  存在火源、通风不足或敏感人群  "), "stop_conditions.*leading or trailing whitespace"),
+            ("primary boundary", lambda solution: solution.__setitem__("primary_stop_condition", f" {solution['primary_stop_condition']} "), "primary_stop_condition.*leading or trailing whitespace"),
+        )
+        for label, mutate, expected in cases:
+            with self.subTest(case=label):
+                canonical, analysis = sample()
+                mutate(analysis["posts"][0]["solution"])
+
+                with self.assertRaisesRegex(ValueError, expected):
+                    build_video_ir(canonical, analysis)
+
+    def test_representative_experience_and_counterexample_ignore_comment_order(self):
+        canonical, analysis = sample()
+        post = analysis["posts"][0]
+        post["comments"].extend([
+            {"comment_id": "c9", "category": "firsthand_experience", "claim": "较弱亲历", "confidence": 0.99, "evidence_quality": "weak", "risk_flags": []},
+            {"comment_id": "c10", "category": "firsthand_experience", "claim": "同质量但置信度更低", "confidence": 0.80, "evidence_quality": "strong", "risk_flags": []},
+            {"comment_id": "c11", "category": "counterexample", "claim": "较强反例", "confidence": 0.91, "evidence_quality": "strong", "risk_flags": []},
+            {"comment_id": "c12", "category": "firsthand_experience", "claim": "高置信但有商业偏差", "confidence": 0.99, "evidence_quality": "strong", "risk_flags": ["commercial_bias"]},
+            {"comment_id": "c13", "category": "counterexample", "claim": "同分反例", "confidence": 0.91, "evidence_quality": "strong", "risk_flags": []},
+        ])
+        canonical.extend([
+            {"kind": "comment", "comment_id": "c9", "note_id": post["note_id"], "parent_id": None, "thread_id": "c9", "author": "用户-test9", "content": "较弱亲历", "likes": 0, "created_at": ""},
+            {"kind": "comment", "comment_id": "c10", "note_id": post["note_id"], "parent_id": None, "thread_id": "c10", "author": "用户-test10", "content": "同质量但置信度更低", "likes": 0, "created_at": ""},
+            {"kind": "comment", "comment_id": "c11", "note_id": post["note_id"], "parent_id": None, "thread_id": "c11", "author": "用户-test11", "content": "较强反例", "likes": 0, "created_at": ""},
+            {"kind": "comment", "comment_id": "c12", "note_id": post["note_id"], "parent_id": None, "thread_id": "c12", "author": "用户-test12", "content": "高置信但有商业偏差", "likes": 0, "created_at": ""},
+            {"kind": "comment", "comment_id": "c13", "note_id": post["note_id"], "parent_id": None, "thread_id": "c13", "author": "用户-test13", "content": "同分反例", "likes": 0, "created_at": ""},
+        ])
+        first = next(scene for scene in build_video_ir(canonical, analysis)["videos"][0]["scenes"] if scene["role"] == "evidence")
+        post["comments"].reverse()
+        second = next(scene for scene in build_video_ir(canonical, analysis)["videos"][0]["scenes"] if scene["role"] == "evidence")
+
+        self.assertEqual(first["content"], second["content"])
+        self.assertEqual("c1", first["content"]["experience"]["comment_id"])
+        self.assertEqual("c11", first["content"]["counterexample"]["comment_id"])
+
+    def test_caption_chunks_prefer_boundaries_without_orphaning_words_or_units(self):
+        narration = "先确认AI Agent配置，再观察30 分钟；异常时停止。"
+        chunks = _caption_chunks(narration, max_units=10)
+
+        self.assertEqual(narration, "".join(chunks))
+        for protected in ("AI", "Agent", "30 分钟"):
+            self.assertTrue(any(protected in chunk for chunk in chunks), (protected, chunks))
+        for chunk in chunks[1:]:
+            visible = chunk.strip("。！？!?；;，,：: ")
+            self.assertIsNone(re.fullmatch(r"[\u3400-\u9fff]{1,2}", visible), chunks)
+        self.assertTrue(any(chunk.endswith(("，", "；", "。")) for chunk in chunks[:-1]))
+        balanced = _caption_chunks("一二三四五六七八九十甲乙", max_units=10)
+        self.assertEqual("一二三四五六七八九十甲乙", "".join(balanced))
+        self.assertGreaterEqual(len(balanced[-1]), 3)
+
     def test_sample_has_a_75_second_mobile_first_story_arc(self):
         canonical, analysis = sample()
         video = build_video_ir(canonical, analysis)["videos"][0]
@@ -91,6 +235,8 @@ class VideoContractTests(unittest.TestCase):
                 self.assertLessEqual(display_units(caption["text"]) / seconds, 10.0)
                 self.assertNotIn(caption["text"], set("。！？!?；;，,：:"))
                 self.assertFalse(all(char in "。！？!?；;，,：:" for char in caption["text"]))
+                visible = caption["text"].strip("。！？!?；;，,：: ")
+                self.assertIsNone(re.fullmatch(r"[\u3400-\u9fff]{1,2}", visible), scene["scene_id"])
                 previous_end = caption["endMs"]
 
     def test_generated_narration_has_no_duplicate_sentence_punctuation(self):
@@ -169,6 +315,81 @@ class VideoContractTests(unittest.TestCase):
                 ir = build_video_ir(canonical, analysis)
                 mutate(ir)
                 self.assertTrue(any(expected in error for error in validate_video_ir(ir, canonical, analysis)))
+
+    def test_python_validator_rejects_ambiguous_v1_scalar_types(self):
+        canonical, analysis = sample()
+        mutations = (
+            ("null video_id", lambda video: video.__setitem__("video_id", None)),
+            ("empty video_id", lambda video: video.__setitem__("video_id", "")),
+            ("null note_id", lambda video: video.__setitem__("note_id", None)),
+            ("empty note_id", lambda video: video.__setitem__("note_id", "")),
+            ("null scene_id", lambda video: video["scenes"][0].__setitem__("scene_id", None)),
+            ("empty scene_id", lambda video: video["scenes"][0].__setitem__("scene_id", "")),
+            ("float width", lambda video: video.__setitem__("width", 1080.5)),
+            ("float height", lambda video: video.__setitem__("height", 1920.5)),
+            ("float fps", lambda video: video.__setitem__("fps", 30.5)),
+            ("float duration milliseconds", lambda video: video.__setitem__("duration_ms", 75000.5)),
+            ("float duration frames", lambda video: video.__setitem__("duration_in_frames", 2250.5)),
+            ("float scene index", lambda video: video["scenes"][0].__setitem__("index", 1.5)),
+            ("bool scene start", lambda video: video["scenes"][0].__setitem__("start_ms", True)),
+            ("bool scene end", lambda video: video["scenes"][0].__setitem__("end_ms", True)),
+            ("bool caption start", lambda video: video["scenes"][0]["captions"][0].__setitem__("startMs", True)),
+            ("bool caption end", lambda video: video["scenes"][0]["captions"][0].__setitem__("endMs", True)),
+            ("empty evidence id", lambda video: video["scenes"][2].__setitem__("evidence_comment_ids", [""])),
+            ("non-string evidence id", lambda video: video["scenes"][2].__setitem__("evidence_comment_ids", [{}])),
+            ("empty appendix evidence id", lambda video: video["appendix"]["evidence"][0].__setitem__("comment_id", "")),
+            ("non-string unsafe evidence id", lambda video: video.__setitem__("unsafe_evidence_comment_ids", [{}])),
+        )
+        for label, mutate in mutations:
+            with self.subTest(case=label):
+                video = copy.deepcopy(build_video_ir(canonical, analysis)["videos"][0])
+                mutate(video)
+                errors = validate_video_ir({"schema": SCHEMA, "videos": [video]})
+                self.assertTrue(any("TYPE" in error for error in errors), errors)
+
+    def test_node_props_boundary_rejects_invalid_v1_scalars_before_browser_lookup(self):
+        canonical, analysis = sample()
+        renderer = SCRIPTS / "render_video.mjs"
+        mutations = (
+            ("null video", lambda props: props.__setitem__("video", None)),
+            ("null video_id", lambda props: props["video"].__setitem__("video_id", None)),
+            ("empty video_id", lambda props: props["video"].__setitem__("video_id", "")),
+            ("null note_id", lambda props: props["video"].__setitem__("note_id", None)),
+            ("empty note_id", lambda props: props["video"].__setitem__("note_id", "")),
+            ("null scene_id", lambda props: props["video"]["scenes"][0].__setitem__("scene_id", None)),
+            ("empty scene_id", lambda props: props["video"]["scenes"][0].__setitem__("scene_id", "")),
+            ("float width", lambda props: props["video"].__setitem__("width", 1080.5)),
+            ("float height", lambda props: props["video"].__setitem__("height", 1920.5)),
+            ("float fps", lambda props: props["video"].__setitem__("fps", 30.5)),
+            ("float duration milliseconds", lambda props: props["video"].__setitem__("duration_ms", 75000.5)),
+            ("float duration frames", lambda props: props["video"].__setitem__("duration_in_frames", 2250.5)),
+            ("float scene index", lambda props: props["video"]["scenes"][0].__setitem__("index", 1.5)),
+            ("bool scene start", lambda props: props["video"]["scenes"][0].__setitem__("start_ms", True)),
+            ("bool scene end", lambda props: props["video"]["scenes"][0].__setitem__("end_ms", True)),
+            ("bool caption start", lambda props: props["video"]["scenes"][0]["captions"][0].__setitem__("startMs", True)),
+            ("bool caption end", lambda props: props["video"]["scenes"][0]["captions"][0].__setitem__("endMs", True)),
+            ("empty evidence id", lambda props: props["video"]["scenes"][2].__setitem__("evidence_comment_ids", [""])),
+            ("non-string evidence id", lambda props: props["video"]["scenes"][2].__setitem__("evidence_comment_ids", [{}])),
+            ("empty appendix evidence id", lambda props: props["video"]["appendix"]["evidence"][0].__setitem__("comment_id", "")),
+            ("non-string unsafe evidence id", lambda props: props["video"].__setitem__("unsafe_evidence_comment_ids", [{}])),
+        )
+        for label, mutate in mutations:
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as tmp:
+                props = {"schema": SCHEMA, "video": copy.deepcopy(build_video_ir(canonical, analysis)["videos"][0])}
+                mutate(props)
+                props_path = Path(tmp) / "invalid.props.json"
+                props_path.write_text(json.dumps(props, ensure_ascii=False), encoding="utf-8")
+                output_path = Path(tmp) / "out.mp4"
+                output_path.write_bytes(b"existing")
+                result = subprocess.run(
+                    ["node", str(renderer), "--props", str(props_path), "--output", str(output_path)],
+                    text=True, encoding="utf-8", capture_output=True, check=False,
+                )
+                message = result.stderr + result.stdout
+                self.assertEqual(3, result.returncode, message)
+                self.assertIn("Invalid xhs-video/v1 props", message)
+                self.assertNotIn("TypeError", message)
+                self.assertNotIn("browser", message.lower())
 
     def test_node_boundary_rejects_combined_removal_of_every_display_warning(self):
         canonical, analysis = sample()

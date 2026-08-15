@@ -163,12 +163,21 @@ def validate(canonical, analysis):
             stop_conditions = step.get("stop_conditions")
             if not isinstance(stop_conditions, list) or not stop_conditions or any(not isinstance(value, str) or not value.strip() for value in stop_conditions):
                 errors.append(f"{note_id}: step {index} stop_conditions must be a non-empty string list")
+            elif any(value != value.strip() for value in stop_conditions):
+                errors.append(f"{note_id}: step {index} stop_conditions must not have leading or trailing whitespace")
             if not evidence: errors.append(f"{note_id}: step {index} has no evidence")
             for cid in evidence:
                 if cid not in expected or classified.get(cid) not in STEP_CATEGORIES: errors.append(f"{note_id}: step {index} cites ineligible comment {cid}")
             if not claim_ids or any(claim_id not in claim_map for claim_id in claim_ids): errors.append(f"{note_id}: step {index} has invalid claim_ids")
             covered = set().union(*(claim_map.get(claim_id, set()) for claim_id in claim_ids))
             if not set(evidence) <= covered: errors.append(f"{note_id}: step {index} evidence is not covered by claims")
+        if "primary_stop_condition" in solution:
+            primary_stop = solution["primary_stop_condition"]
+            available_stops = [condition for step in steps for condition in step.get("stop_conditions", [])]
+            if isinstance(primary_stop, str) and primary_stop != primary_stop.strip():
+                errors.append(f"{note_id}: primary_stop_condition must not have leading or trailing whitespace")
+            elif not isinstance(primary_stop, str) or not primary_stop or primary_stop not in available_stops:
+                errors.append(f"{note_id}: primary_stop_condition must exactly match one steps.stop_conditions item")
         conflicts = solution.get("conflicts", []); conflicts = conflicts if isinstance(conflicts, list) else []
         for index, conflict in enumerate(conflicts, 1):
             positions = conflict.get("positions", []) if isinstance(conflict, dict) else []

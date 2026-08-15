@@ -60,7 +60,10 @@ const exactKeys = (value, expected, location, optional = []) => {
 
 const sameList = (left, right) => Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => value === right[index]);
 const requiredString = (value, location) => {
-  if (typeof value !== "string" || value.length === 0) fail(`Invalid xhs-video/v1 props: ${location} must be a non-empty string`, 3);
+  if (typeof value !== "string" || value.trim().length === 0) fail(`Invalid xhs-video/v1 props: ${location} must be a non-empty string`, 3);
+};
+const requiredInteger = (value, location) => {
+  if (!Number.isInteger(value)) fail(`Invalid xhs-video/v1 props: ${location} must be an integer`, 3);
 };
 
 const validateProps = (inputProps) => {
@@ -68,16 +71,19 @@ const validateProps = (inputProps) => {
   if (inputProps.schema !== "xhs-video/v1") fail("Invalid xhs-video/v1 props: schema mismatch", 3);
   const video = inputProps?.video;
   exactKeys(video, ["video_id", "note_id", "profile", "width", "height", "fps", "duration_ms", "duration_in_frames", "meta", "scenes", "appendix", "unsafe_evidence_comment_ids"], "$props.video");
-  if (video.profile !== "xhs-vertical-1080x1920-v1") fail("Props must contain one validated xhs-vertical-1080x1920-v1 video", 3);
-  if (video.width !== 1080 || video.height !== 1920 || video.fps !== 30) fail("Video profile must be 1080x1920 at 30fps", 3);
-  if (!Number.isInteger(video.duration_in_frames) || video.duration_in_frames < 1800 || video.duration_in_frames > 2700) fail("Video duration must be 1800-2700 frames", 3);
-  if (!Number.isInteger(video.duration_ms) || video.duration_ms * video.fps / 1000 !== video.duration_in_frames) fail("Invalid xhs-video/v1 props: duration mismatch", 3);
+  requiredString(video.video_id, "$props.video.video_id");
+  requiredString(video.note_id, "$props.video.note_id");
+  for (const field of ["width", "height", "fps", "duration_ms", "duration_in_frames"]) requiredInteger(video[field], `$props.video.${field}`);
+  if (video.profile !== "xhs-vertical-1080x1920-v1") fail("Invalid xhs-video/v1 props: profile must be xhs-vertical-1080x1920-v1", 3);
+  if (video.width !== 1080 || video.height !== 1920 || video.fps !== 30) fail("Invalid xhs-video/v1 props: profile must be 1080x1920 at 30fps", 3);
+  if (video.duration_in_frames < 1800 || video.duration_in_frames > 2700) fail("Invalid xhs-video/v1 props: duration must be 1800-2700 frames", 3);
+  if (video.duration_ms * video.fps / 1000 !== video.duration_in_frames) fail("Invalid xhs-video/v1 props: duration mismatch", 3);
   exactKeys(video.meta, ["candidate_count", "question_count", "excluded_count", "source", "captured_at", "comments_total", "comments_collected", "is_truncated", "failure_reason", "risk_level", "publish_status", "ai_assisted", "interest_disclosure", "audio"], "$props.video.meta");
   if (JSON.stringify(video.meta.audio) !== '{"kind":"none"}') fail("Invalid xhs-video/v1 props: only audio.kind=none is supported", 3);
   exactKeys(video.appendix, ["evidence"], "$props.video.appendix");
   if (!Array.isArray(video.appendix.evidence)) fail("Invalid xhs-video/v1 props: appendix.evidence must be a list", 3);
   const evidenceIds = new Set();
-  if (!Array.isArray(video.unsafe_evidence_comment_ids) || new Set(video.unsafe_evidence_comment_ids).size !== video.unsafe_evidence_comment_ids.length || video.unsafe_evidence_comment_ids.some((id) => typeof id !== "string" || id.length === 0)) fail("Invalid xhs-video/v1 props: unsafe_evidence_comment_ids must be a unique string list", 3);
+  if (!Array.isArray(video.unsafe_evidence_comment_ids) || new Set(video.unsafe_evidence_comment_ids).size !== video.unsafe_evidence_comment_ids.length || video.unsafe_evidence_comment_ids.some((id) => typeof id !== "string" || id.trim().length === 0)) fail("Invalid xhs-video/v1 props: unsafe_evidence_comment_ids must be a unique non-empty string list", 3);
   const unsafeIds = new Set(video.unsafe_evidence_comment_ids);
   for (const [index, item] of video.appendix.evidence.entries()) {
     exactKeys(item, ["comment_id", "category", "category_label", "author", "likes", "likes_label", "thread_id", "excerpt"], `appendix.evidence[${index}]`, ["safety_warning"]);
@@ -104,15 +110,18 @@ const validateProps = (inputProps) => {
   for (const [index, scene] of video.scenes.entries()) {
     exactKeys(scene, sceneFields, `scenes[${index}]`);
     requiredString(scene.scene_id, `scenes[${index}].scene_id`);
+    requiredInteger(scene.index, `scenes[${index}].index`);
+    requiredInteger(scene.start_ms, `scenes[${index}].start_ms`);
+    requiredInteger(scene.end_ms, `scenes[${index}].end_ms`);
     if (sceneIds.has(scene.scene_id)) fail(`Invalid xhs-video/v1 props: duplicate scene ${scene.scene_id}`, 3);
     sceneIds.add(scene.scene_id);
     if (!contentFields[scene.role]) fail(`Invalid xhs-video/v1 props: unsupported scene role ${scene.role}`, 3);
     roles.push(scene.role);
     exactKeys(scene.content, contentFields[scene.role], `scenes[${index}].content`);
-    if (scene.index !== index + 1 || scene.start_ms !== cursor || !Number.isInteger(scene.end_ms) || scene.end_ms <= cursor) fail(`Invalid xhs-video/v1 props: scene timing/index mismatch at ${index}`, 3);
+    if (scene.index !== index + 1 || scene.start_ms !== cursor || scene.end_ms <= cursor) fail(`Invalid xhs-video/v1 props: scene timing/index mismatch at ${index}`, 3);
     cursor = scene.end_ms;
     requiredString(scene.narration, `scenes[${index}].narration`);
-    if (!Array.isArray(scene.evidence_comment_ids) || new Set(scene.evidence_comment_ids).size !== scene.evidence_comment_ids.length || scene.evidence_comment_ids.some((id) => !evidenceIds.has(id))) fail(`Invalid xhs-video/v1 props: scene evidence mismatch at ${index}`, 3);
+    if (!Array.isArray(scene.evidence_comment_ids) || new Set(scene.evidence_comment_ids).size !== scene.evidence_comment_ids.length || scene.evidence_comment_ids.some((id) => typeof id !== "string" || id.trim().length === 0 || !evidenceIds.has(id))) fail(`Invalid xhs-video/v1 props: scene evidence mismatch at ${index}`, 3);
     if (!Array.isArray(scene.persistent_notices) || scene.persistent_notices.some((notice) => !allowedNotices.has(notice))) fail(`Invalid xhs-video/v1 props: scene notices must be a known list at ${index}`, 3);
     if (!Array.isArray(scene.captions) || scene.captions.length === 0) fail(`Invalid xhs-video/v1 props: captions missing at ${index}`, 3);
     let combined = "";

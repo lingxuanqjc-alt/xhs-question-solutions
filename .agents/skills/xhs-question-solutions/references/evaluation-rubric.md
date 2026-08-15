@@ -57,6 +57,7 @@
 
 - `external_fact` 没有权威 URL 时不得标为 `supported`。
 - 每个方案步骤必须引用主张 ID 和评论 ID，并写明 `applies_when`、`verification`、`stop_conditions`。
+- 需要短视频 CTA 时，在 `solution.primary_stop_condition` 中语义选择一个最值得前置的停止边界；它必须逐字复制自某个步骤的 `stop_conditions`，不得让渲染器按关键词猜测。
 - 步骤只能由 `direct_answer`、`firsthand_experience`、`risk_warning` 或 `counterexample` 支持。反例只能支持避免、复核或停止条件，不能单独证明一个正向方案有效。
 - `speculation`、`clarifying_question` 和 `off_topic` 只能进入风险或待验证。
 - 高风险主题没有权威外部复核时，`publish_status` 必须为 `needs_review`。

@@ -24,6 +24,7 @@ ALLOWED_NOTICES = {UNSAFE_NOTICE_CODE, "synthetic_demo", "truncated_sample", "hi
 ROLES = ("hook", "scope", "action", "evidence", "conflict_risk", "risk_unknowns", "disclosure", "cta")
 TARGET_MS = {1: 60_000, 2: 68_000, 3: 75_000, 4: 84_000, 5: 90_000}
 FIXED_DURATIONS = {"hook": 3_000, "scope": 5_000, "evidence": 10_000, "conflict_risk": 11_000, "risk_unknowns": 8_000, "disclosure": 7_000, "cta": 4_000}
+CTA_STOP_MESSAGE_MAX_UNITS = 60
 VIDEO_FIELDS = {"video_id", "note_id", "profile", "width", "height", "fps", "duration_ms", "duration_in_frames", "meta", "scenes", "appendix", "unsafe_evidence_comment_ids"}
 META_FIELDS = {"candidate_count", "question_count", "excluded_count", "source", "captured_at", "comments_total", "comments_collected", "is_truncated", "failure_reason", "risk_level", "publish_status", "ai_assisted", "interest_disclosure", "audio"}
 SCENE_FIELDS = {"scene_id", "index", "role", "start_ms", "end_ms", "content", "narration", "captions", "evidence_comment_ids", "persistent_notices"}
@@ -63,26 +64,66 @@ def _stable_unique(values):
     return list(dict.fromkeys(value for value in values if value))
 
 
+_CAPTION_TOKEN = re.compile(
+    r"\d+(?:\.\d+)?(?:\s*(?:%|％|毫秒|分钟|小时|平方米|毫米|厘米|千克|公斤|毫升|个月|秒|天|周|月|年|米|㎡|克|升|元|块|个|次|条|步|项|种|倍|℃|°C|[A-Za-z]+))?"
+    r"|[A-Za-z][A-Za-z0-9]*(?:[._/+:-][A-Za-z0-9]+)*|\s+|.",
+    re.DOTALL,
+)
+_CAPTION_STRONG_BOUNDARIES = set("。！？!?；;")
+_CAPTION_WEAK_BOUNDARIES = set("，,：:")
+
+
+def _caption_atoms(text):
+    return _CAPTION_TOKEN.findall(text)
+
+
+def _orphan_han_chunk(text):
+    visible = text.strip("。！？!?；;，,：: ")
+    return bool(re.fullmatch(r"[\u3400-\u9fff]{1,2}", visible))
+
+
+def _semantic_caption_chunks(text, max_units):
+    """Prefer punctuation boundaries while keeping protected tokens and Han tails whole."""
+    atoms, best = _caption_atoms(text), {}
+    best[len(atoms)] = (0.0, [])
+    for start in range(len(atoms) - 1, -1, -1):
+        chunk = ""
+        for end in range(start + 1, len(atoms) + 1):
+            chunk += atoms[end - 1]
+            units = display_units(chunk)
+            if units > max_units:
+                break
+            if end not in best or (_orphan_han_chunk(chunk) and not (start == 0 and end == len(atoms))):
+                continue
+            if end == len(atoms):
+                boundary_cost = 0
+            elif chunk[-1] in _CAPTION_STRONG_BOUNDARIES:
+                boundary_cost = 0
+            elif chunk[-1] in _CAPTION_WEAK_BOUNDARIES:
+                boundary_cost = 3
+            elif chunk[-1].isspace():
+                boundary_cost = 6
+            else:
+                boundary_cost = 24
+            cost = 10 + boundary_cost + best[end][0] + (max_units - units) ** 2 / 100
+            candidate = (cost, [chunk] + best[end][1])
+            if start not in best or candidate[0] < best[start][0]:
+                best[start] = candidate
+    if 0 not in best:
+        raise ValueError("CAPTION_TOKEN_OVERFLOW: cannot split narration without breaking a word, unit, or short Han tail")
+    return best[0][1]
+
+
 def _caption_chunks(narration, max_units=20):
     if not narration or any(char in narration for char in "\r\n\t"):
         raise ValueError("narration must be a non-empty single line")
-    chunks, current = [], ""
+    chunks = []
     safety_prefix = f"{UNSAFE_WARNING}。"
     if narration.startswith(safety_prefix):
         chunks.append(safety_prefix)
         narration = narration[len(safety_prefix):]
-    boundaries = set("。！？!?；;，,：:")
-    for char in narration:
-        if current and display_units(current + char) > max_units:
-            chunks.append(current); current = ""
-        current += char
-        if char in boundaries:
-            if current == char and chunks:
-                current = chunks[-1][-1:] + char
-                chunks[-1] = chunks[-1][:-1]
-                if not chunks[-1]: chunks.pop()
-            chunks.append(current); current = ""
-    if current: chunks.append(current)
+    if narration:
+        chunks.extend(_semantic_caption_chunks(narration, max_units))
     return chunks
 
 
@@ -91,9 +132,9 @@ def _sentence(value):
     return text if text.endswith(("。", "！", "？", "!", "?")) else f"{text}。"
 
 
-def _captions(narration, start_ms, end_ms):
+def _captions(narration, start_ms, end_ms, edge_padding_ms=200):
     chunks = _caption_chunks(narration)
-    cursor, latest = start_ms + 200, end_ms - 200
+    cursor, latest = start_ms + edge_padding_ms, end_ms - edge_padding_ms
     durations = [max(1_200, math.ceil(display_units(text) / 8 * 1000)) for text in chunks]
     if sum(durations) > latest - cursor:
         durations = [max(1_200, math.ceil(display_units(text) / 10 * 1000)) for text in chunks]
@@ -112,15 +153,87 @@ def _unsafe_ids(post):
 
 def _scene(scene_id, index, role, start_ms, duration_ms, content, narration, evidence_ids=(), notices=()):
     return {"scene_id": scene_id, "index": index, "role": role, "start_ms": start_ms, "end_ms": start_ms + duration_ms,
-            "content": content, "narration": narration, "captions": _captions(narration, start_ms, start_ms + duration_ms),
+            "content": content, "narration": narration, "captions": _captions(narration, start_ms, start_ms + duration_ms, 100 if role == "hook" else 200),
             "evidence_comment_ids": list(evidence_ids), "persistent_notices": list(notices)}
 
 
 def _selected(items, category):
-    for item in items:
-        if item.get("category") == category:
-            return {"comment_id": item["comment_id"], "claim": item["claim"]}
-    return None
+    """Pick by evidence quality, fewer risk flags, confidence, then stable comment ID."""
+    quality = {"strong": 3, "moderate": 2, "weak": 1}
+    candidates = [item for item in items if item.get("category") == category]
+    if not candidates:
+        return None
+    selected = min(candidates, key=lambda item: (
+        -quality.get(item.get("evidence_quality"), 0),
+        len(item.get("risk_flags", [])),
+        -float(item.get("confidence", 0)),
+        item["comment_id"],
+    ))
+    return {"comment_id": selected["comment_id"], "claim": selected["claim"]}
+
+
+_HOOK_BOUNDARY_MARKERS = ("不要", "不得", "不能", "不应", "不建议", "切勿", "禁止", "避免", "并非", "未", "无", "风险", "危险", "停止", "不适", "火源", "不")
+_HOOK_QUALIFIERS = ("如果", "若", "时", "先", "后", "再", "需", "需要", "仅", "只", "前提", "条件")
+
+
+def _hook_summary_excerpt(summary, max_units=12):
+    """Select a complete continuous clause without inventing or clipping safety meaning."""
+    text = str(summary).strip()
+    if not text or any(char in text for char in "\r\n\t"):
+        raise ValueError("hook summary must be a non-empty single line")
+    if max_units <= 0:
+        return None
+    clauses = [part.strip() for part in re.split(r"[。！？!?；;，,：:]", text) if part.strip()]
+    candidates = list(clauses)
+    for clause in clauses:
+        candidates.extend(part.strip() for part in re.split(r"并且|并|且|和|及", clause) if part.strip())
+    candidates = _stable_unique(candidate for candidate in candidates if display_units(candidate) <= max_units)
+    protected = tuple(marker for marker in _HOOK_BOUNDARY_MARKERS if marker in text)
+    if protected:
+        candidates = [candidate for candidate in candidates if any(marker in candidate for marker in protected)]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda candidate: (
+        -sum(marker in candidate for marker in _HOOK_QUALIFIERS),
+        -sum(marker in candidate for marker in _HOOK_BOUNDARY_MARKERS),
+        -display_units(candidate),
+        text.index(candidate),
+        candidate,
+    ))
+
+
+def _stop_message(steps, primary_stop_condition=None):
+    """Copy the semantic primary boundary, or preserve every boundary when it is absent."""
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        for condition in step.get("stop_conditions", []):
+            if isinstance(condition, str) and condition != condition.strip():
+                raise ValueError("stop_conditions must not have leading or trailing whitespace")
+    raw_conditions = _stable_unique(
+        condition
+        for step in steps if isinstance(step, dict)
+        for condition in step.get("stop_conditions", [])
+        if isinstance(condition, str) and condition.strip()
+    )
+    if primary_stop_condition is not None:
+        if not isinstance(primary_stop_condition, str) or primary_stop_condition != primary_stop_condition.strip():
+            raise ValueError("primary_stop_condition must not have leading or trailing whitespace")
+        if primary_stop_condition not in raw_conditions:
+            raise ValueError("primary_stop_condition must exactly match one steps.stop_conditions item")
+        condition = primary_stop_condition.strip("。；， ")
+        prefix = "" if condition.startswith(("若", "如果", "当")) else "若"
+        message = f"{prefix}{condition}，请停止自行处理并寻求合适的专业帮助。"
+        if display_units(message) > CTA_STOP_MESSAGE_MAX_UNITS:
+            raise ValueError(f"CTA_PRIMARY_STOP_TOO_LONG: stop message exceeds {CTA_STOP_MESSAGE_MAX_UNITS} display units")
+        return message
+    if not raw_conditions:
+        return "出现无法安全判断或情况恶化时，请停止自行处理并寻求合适的专业帮助。"
+    conditions = [condition.strip("。；， ") for condition in raw_conditions]
+    message = f"停止条件：{'；'.join(conditions)}。任一出现时，请停止自行处理并寻求合适的专业帮助。"
+    if display_units(message) > CTA_STOP_MESSAGE_MAX_UNITS:
+        raise ValueError(f"CTA_STOP_CONDITIONS_TOO_LONG: full stop-condition list exceeds {CTA_STOP_MESSAGE_MAX_UNITS} display units")
+    return message
 
 
 def _cta(unknowns):
@@ -160,7 +273,11 @@ def _video_for_post(post, note, deck, candidate_count, question_count, excluded_
     if capture.get("source") == "synthetic_fixture": hook_notices.append("synthetic_demo")
     if solution["risk_level"] == "high" and solution["publish_status"] == "needs_review": hook_notices.append("high_risk_needs_review")
     social_title = post.get("social_title") or post["question"]
-    add("hook", FIXED_DURATIONS["hook"], {"social_title": social_title, "question": post["question"], "summary": solution["summary"]}, social_title, notices=hook_notices)
+    title_voice, hook_path = _sentence(social_title), f"，继续看{len(steps)}步。"
+    excerpt_budget = min(12, 28 - display_units(title_voice) - display_units(hook_path))
+    hook_excerpt = _hook_summary_excerpt(solution["summary"], excerpt_budget)
+    hook_voice = f"{title_voice}{hook_excerpt}{hook_path}" if hook_excerpt else f"问题、证据、行动，继续看{len(steps)}步。"
+    add("hook", FIXED_DURATIONS["hook"], {"social_title": social_title, "question": post["question"], "summary": solution["summary"]}, hook_voice, notices=hook_notices)
 
     coverage = _coverage(capture)
     scope_voice = f"{coverage}，{'评论未完整采集；' if capture.get('is_truncated') else ''}热度不等于事实。"
@@ -209,7 +326,7 @@ def _video_for_post(post, note, deck, candidate_count, question_count, excluded_
         f"AI辅助整理、{source_label}，{sample_label}且经验不等于事实，利益关系未知，{publish_voice}。",
         notices=["ai_assisted"] + (["truncated_sample"] if capture.get("is_truncated") else []))
     cta = _cta(solution.get("unknowns", []))
-    add("cta", FIXED_DURATIONS["cta"], {"question": cta, "stop_message": "出现健康不适或结构、管线问题时，停止自行处理并寻求专业帮助"}, cta)
+    add("cta", FIXED_DURATIONS["cta"], {"question": cta, "stop_message": _stop_message(steps, solution.get("primary_stop_condition"))}, cta)
 
     meta = {"candidate_count": candidate_count, "question_count": question_count, "excluded_count": excluded_count,
             "source": capture.get("source", "unknown"), "captured_at": capture.get("captured_at", ""), "comments_total": capture.get("comments_total", 0),
@@ -244,6 +361,14 @@ def _unknown_fields(value, allowed, path, errors):
         if unknown: errors.append(f"UNKNOWN_FIELD {path}: {', '.join(unknown)}")
 
 
+def _strict_int(value):
+    return type(value) is int
+
+
+def _nonempty_string(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
 def validate_video_ir(ir, canonical=None, analysis=None):
     errors = []
     if not isinstance(ir, dict): return ["SHAPE $ must be an object"]
@@ -274,11 +399,18 @@ def validate_video_ir(ir, canonical=None, analysis=None):
         if not isinstance(video, dict): errors.append(f"SHAPE {path} must be an object"); continue
         _unknown_fields(video, VIDEO_FIELDS, path, errors)
         note_id, video_id = video.get("note_id"), video.get("video_id")
-        if video_id in seen_videos: errors.append(f"DUPLICATE_ID {path}.video_id")
-        seen_videos.add(video_id)
+        if not _nonempty_string(video_id): errors.append(f"TYPE {path}.video_id must be a non-empty string")
+        elif video_id in seen_videos: errors.append(f"DUPLICATE_ID {path}.video_id")
+        else: seen_videos.add(video_id)
+        if not _nonempty_string(note_id): errors.append(f"TYPE {path}.note_id must be a non-empty string")
+        for field in ("width", "height", "fps", "duration_ms", "duration_in_frames"):
+            if not _strict_int(video.get(field)): errors.append(f"TYPE {path}.{field} must be an integer")
         if video.get("profile") != PROFILE or (video.get("width"), video.get("height"), video.get("fps")) != (WIDTH, HEIGHT, FPS): errors.append(f"PROFILE {path} must use {PROFILE}")
         unsafe_manifest = video.get("unsafe_evidence_comment_ids")
-        if not isinstance(unsafe_manifest, list) or any(not isinstance(cid, str) for cid in unsafe_manifest) or len(unsafe_manifest) != len(set(unsafe_manifest)):
+        valid_unsafe_ids = isinstance(unsafe_manifest, list) and all(_nonempty_string(cid) for cid in unsafe_manifest)
+        if not valid_unsafe_ids:
+            errors.append(f"TYPE {path}.unsafe_evidence_comment_ids must contain non-empty string IDs")
+        if not valid_unsafe_ids or len(unsafe_manifest) != len(set(unsafe_manifest)):
             errors.append(f"UNSAFE_MANIFEST {path}.unsafe_evidence_comment_ids must be a unique string list"); unsafe_manifest = []
         meta = video.get("meta")
         if not isinstance(meta, dict): errors.append(f"SHAPE {path}.meta must be an object")
@@ -301,7 +433,8 @@ def validate_video_ir(ir, canonical=None, analysis=None):
                     missing = sorted(required - set(item)); unknown = sorted(set(item) - allowed)
                     if missing: errors.append(f"MISSING_FIELD {item_path}: {', '.join(missing)}")
                     if unknown: errors.append(f"UNKNOWN_FIELD {item_path}: {', '.join(unknown)}")
-                    if isinstance(item.get("comment_id"), str): appendix_ids.add(item["comment_id"])
+                    if _nonempty_string(item.get("comment_id")): appendix_ids.add(item["comment_id"])
+                    else: errors.append(f"TYPE {item_path}.comment_id must be a non-empty string")
                     if item.get("comment_id") in unsafe_manifest:
                         if item.get("safety_warning") != UNSAFE_WARNING: errors.append(f"UNSAFE_MANIFEST {item_path} must carry the fixed safety warning")
                     elif item.get("safety_warning") is not None:
@@ -316,16 +449,24 @@ def validate_video_ir(ir, canonical=None, analysis=None):
             _unknown_fields(scene, SCENE_FIELDS, scene_path, errors)
             role = scene.get("role")
             if role not in ROLES: errors.append(f"ROLE {scene_path}.role")
+            if not _strict_int(scene.get("index")): errors.append(f"TYPE {scene_path}.index must be an integer")
             if scene.get("index") != si + 1: errors.append(f"SCENE_INDEX {scene_path}")
-            if scene.get("scene_id") in scene_ids: errors.append(f"DUPLICATE_ID {scene_path}.scene_id")
-            scene_ids.add(scene.get("scene_id"))
-            if scene.get("start_ms") != cursor or not isinstance(scene.get("end_ms"), int) or scene.get("end_ms", 0) <= cursor: errors.append(f"SCENE_TIMING {scene_path} expected start {cursor}")
-            cursor = scene.get("end_ms") if isinstance(scene.get("end_ms"), int) else cursor
+            scene_id = scene.get("scene_id")
+            if not _nonempty_string(scene_id): errors.append(f"TYPE {scene_path}.scene_id must be a non-empty string")
+            elif scene_id in scene_ids: errors.append(f"DUPLICATE_ID {scene_path}.scene_id")
+            else: scene_ids.add(scene_id)
+            start_ms, end_ms = scene.get("start_ms"), scene.get("end_ms")
+            if not _strict_int(start_ms): errors.append(f"TYPE {scene_path}.start_ms must be an integer")
+            if not _strict_int(end_ms): errors.append(f"TYPE {scene_path}.end_ms must be an integer")
+            if not _strict_int(start_ms) or not _strict_int(end_ms) or start_ms != cursor or end_ms <= cursor: errors.append(f"SCENE_TIMING {scene_path} expected start {cursor}")
+            if _strict_int(end_ms): cursor = end_ms
             content = scene.get("content")
             if not isinstance(content, dict): errors.append(f"SHAPE {scene_path}.content must be an object")
             elif role in CONTENT_FIELDS: _unknown_fields(content, CONTENT_FIELDS[role], f"{scene_path}.content", errors)
             evidence_ids = scene.get("evidence_comment_ids")
-            if not isinstance(evidence_ids, list) or any(not isinstance(cid, str) for cid in evidence_ids): errors.append(f"EVIDENCE {scene_path}.evidence_comment_ids must be a string list"); evidence_ids = []
+            if not isinstance(evidence_ids, list) or any(not _nonempty_string(cid) for cid in evidence_ids):
+                errors.append(f"TYPE {scene_path}.evidence_comment_ids must contain non-empty string IDs")
+                errors.append(f"EVIDENCE {scene_path}.evidence_comment_ids must be a string list"); evidence_ids = []
             elif len(evidence_ids) != len(set(evidence_ids)): errors.append(f"EVIDENCE {scene_path} contains duplicate IDs")
             for cid in evidence_ids:
                 if canonical is not None and (note_id, cid) not in canonical_comments: errors.append(f"EVIDENCE {scene_path} invalid comment {cid}")
@@ -343,11 +484,13 @@ def validate_video_ir(ir, canonical=None, analysis=None):
                 if set(caption) != CAPTION_FIELDS: errors.append(f"CAPTION_SHAPE {caption_path}")
                 text, start, end = caption.get("text"), caption.get("startMs"), caption.get("endMs")
                 if not isinstance(text, str) or not text or any(char in text for char in "\r\n\t"): errors.append(f"CAPTION_TEXT {caption_path}"); text = ""
-                if not isinstance(start, int) or not isinstance(end, int) or start < previous or end <= start or end > scene.get("end_ms", -1): errors.append(f"CAPTION_TIMING {caption_path}")
+                if not _strict_int(start): errors.append(f"TYPE {caption_path}.startMs must be an integer")
+                if not _strict_int(end): errors.append(f"TYPE {caption_path}.endMs must be an integer")
+                if not _strict_int(start) or not _strict_int(end) or start < previous or end <= start or not _strict_int(scene.get("end_ms")) or end > scene["end_ms"]: errors.append(f"CAPTION_TIMING {caption_path}")
                 elif end - start < 1_200 or display_units(text) / ((end - start) / 1000) > 10.0001: errors.append(f"CAPTION_DENSITY {caption_path}")
                 if display_units(text) > 20.0001: errors.append(f"CAPTION_WIDTH {caption_path}")
                 if caption.get("timestampMs") is not None or caption.get("confidence") is not None: errors.append(f"CAPTION_METADATA {caption_path}")
-                if isinstance(end, int): previous = end
+                if _strict_int(end): previous = end
                 combined += text
             if isinstance(narration, str) and combined != narration: errors.append(f"CAPTION_NARRATION_MISMATCH {scene_path}")
             if unsafe:
@@ -358,14 +501,14 @@ def validate_video_ir(ir, canonical=None, analysis=None):
         if post:
             expected_roles = ["hook", "scope"] + ["action"] * len(post["solution"]["steps"]) + ["evidence", "conflict_risk", "risk_unknowns", "disclosure", "cta"]
             if [scene.get("role") for scene in scenes if isinstance(scene, dict)] != expected_roles: errors.append(f"SCENE_ORDER {path}")
-        duration = video.get("duration_ms")
-        if duration != cursor or not isinstance(duration, int) or not 60_000 <= duration <= 90_000: errors.append(f"VIDEO_DURATION {path}")
-        if isinstance(duration, int) and video.get("duration_in_frames") != duration * FPS // 1000: errors.append(f"VIDEO_FRAMES {path}")
+        duration, duration_frames = video.get("duration_ms"), video.get("duration_in_frames")
+        if not _strict_int(duration) or duration != cursor or not 60_000 <= duration <= 90_000: errors.append(f"VIDEO_DURATION {path}")
+        if not _strict_int(duration_frames) or (_strict_int(duration) and duration_frames != duration * FPS // 1000): errors.append(f"VIDEO_FRAMES {path}")
         if post:
             actions = [scene for scene in scenes if isinstance(scene, dict) and scene.get("role") == "action"]
             for step_number, (scene, step) in enumerate(zip(actions, post["solution"]["steps"]), 1):
                 expected = {"step_number": step_number, "text": step["text"], "applies_when": step["applies_when"], "verification": step["verification"], "stop_conditions": step["stop_conditions"]}
-                if scene.get("content") != expected: errors.append(f"ACTION_CONTENT {path}.scenes[{scene.get('index', 0) - 1}]")
+                if scene.get("content") != expected: errors.append(f"ACTION_CONTENT {path}.scenes[{step_number + 1}]")
                 if scene.get("evidence_comment_ids") != step["evidence_comment_ids"]: errors.append(f"ACTION_EVIDENCE {path}")
             conflict = next((scene for scene in scenes if scene.get("role") == "conflict_risk"), None)
             if conflict and conflict.get("content", {}).get("conflicts") != post["solution"].get("conflicts", []): errors.append(f"CONFLICT_CONTENT {path}")

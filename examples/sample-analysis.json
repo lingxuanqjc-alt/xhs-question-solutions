@@ -84,6 +84,7 @@
       ],
       "solution": {
         "summary": "先做好防护并排查持续潮湿或渗水原因，处理根因后再除霉和观察复发。",
+        "primary_stop_condition": "存在火源、通风不足或敏感人群",
         "risk_level": "high",
         "publish_status": "needs_review",
         "claims": [

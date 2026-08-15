@@ -23,7 +23,8 @@ body { margin: 0; }
 .role-hook .scene-title { font-size: 112px; line-height: 1.05; }
 .role-action .scene-title { font-size: 76px; }
 .scene-lead { font-size: 46px; line-height: 1.38; font-weight: 650; color: #5a4b50; }
-.hook-kicker { display: inline-flex; align-self: flex-start; padding: 14px 25px; border-radius: 999px; background: #d2604f; color: white; font-size: 38px; font-weight: 850; }
+.hook-question { padding-left: 22px; border-left: 10px solid #d2604f; }
+.hook-answer { padding: 18px 24px; border-radius: 22px; background: rgba(255,255,255,.64); border: 2px solid rgba(37,31,34,.1); }
 .hook-route { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; margin-top: 18px; font-size: 40px; font-weight: 850; }
 .hook-route span { padding: 14px 22px; border-radius: 18px; background: rgba(255,255,255,.65); border: 2px solid rgba(37,31,34,.12); }
 .hook-route i { font-style: normal; color: #d2604f; }
@@ -36,6 +37,9 @@ body { margin: 0; }
 .field-safe { background: #ecf1e5; border-color: #80966c; }
 .action-stage, .disclosure-list, .unknown-grid { display: grid; gap: 18px; }
 .action-stage { position: relative; }
+.focus-stack { position: relative; height: 320px; }
+.focus-layer { position: absolute; inset: 0; }
+.focus-emphasis { will-change: opacity, translate, scale; }
 .action-stage .field-card { height: 320px; display: flex; flex-direction: column; justify-content: center; }
 .action-dots { display: flex; gap: 16px; }
 .action-dots span { min-width: 104px; height: 54px; padding: 0 16px; display: grid; place-items: center; border-radius: 999px; background: rgba(37,31,34,.12); color: rgba(37,31,34,.55); font-size: 27px; font-weight: 900; }
@@ -57,10 +61,11 @@ body { margin: 0; }
 .evidence-strip b { padding: 8px 14px; border-radius: 13px; background: #675170; color: white; }
 .caption-card { position: absolute; left: 80px; right: 180px; top: 1200px; height: 170px; display: flex; align-items: center; padding: 16px 30px; border-radius: 24px; background: rgba(35,28,32,.9); color: #fffaf2; font-size: 48px; line-height: 1.3; font-weight: 850; opacity: 0; }
 .caption-visible { opacity: 1; }
+.caption-safety { outline: 4px solid #d5685f; background: rgba(81,22,21,.96); }
 .caption-probe { visibility: hidden; opacity: 0; }
 .dynamic-field-probes { position: absolute; inset: 0; visibility: hidden; pointer-events: none; }
 .dynamic-field-probe { position: absolute; left: 0; right: 0; top: 0; height: 320px; overflow: visible; }
-.role-risk_unknowns .action-stage .field-card, .role-risk_unknowns .dynamic-field-probe { height: 380px; }
+.role-risk_unknowns .focus-stack, .role-risk_unknowns .action-stage .field-card, .role-risk_unknowns .dynamic-field-probe { height: 380px; }
 .audio-disclosure { position: absolute; left: 80px; top: 1405px; font-size: 28px; font-weight: 700; color: rgba(37,31,34,.68); }
 .role-disclosure .scene-content { gap: 18px; }
 .role-disclosure .scene-title { font-size: 70px; }
